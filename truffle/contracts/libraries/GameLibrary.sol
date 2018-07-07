@@ -1,6 +1,7 @@
 pragma solidity ^0.4.24;
 
 import "./../RandomProvider.sol";
+import "./../BalanceController.sol";
 import "./DeckLibrary.sol";
 
 library GameLibrary {
@@ -16,14 +17,14 @@ library GameLibrary {
         address dealer;
         address[] players;
         mapping(address => PlayerState) playerStates;
-        uint currentTurnPlayerId;
+        uint currentPlayerIndex;
         RandomProvider randomProvider;
+        BalanceController balanceController;
     }
 
     struct PlayerState {
         uint bet;
         uint winnings;
-        bool isBust;
         uint8[] hand;
     }
     
@@ -40,9 +41,10 @@ library GameLibrary {
         Ended
     }
     
-    function init(GameState storage self, uint roomId, RandomProvider randomProvider) internal {
+    function init(GameState storage self, uint roomId, RandomProvider randomProvider, BalanceController balanceController) internal {
         self.roomId = roomId;
         self.randomProvider = randomProvider;
+        self.balanceController = balanceController;
         setGameStage(self, GameStage.Betting);
     }
     
@@ -81,7 +83,7 @@ library GameLibrary {
         for(uint i = 0; i < game.players.length; i++) {
             if (game.players[i] == msg.sender) {
                 isInGame = true;
-                if (i != game.currentTurnPlayerId) {
+                if (i != game.currentPlayerIndex) {
                     revert("not your turn");
                 }
             }
@@ -105,28 +107,35 @@ library GameLibrary {
     }
     
     function nextPlayerMove(GameState storage game, bool isGameStart) internal returns (bool) {
-        PlayerState storage playerState = game.playerStates[game.players[game.currentTurnPlayerId]];
-        bool playerHasNatural = playerState.hand.length == 2 && calculateHandScore(playerState.hand) == 21;
-        // Player with natural can't hit or stand
-        // TODO: player with natural can still have insurance
-        if (playerHasNatural) {
-            game.currentTurnPlayerId++;
-            emit CurrentPlayerIndexChanged(game.roomId, game.currentTurnPlayerId);
-            if (nextPlayerMove(game, isGameStart))
-                return;
-        }
-
-        if (!isGameStart) {
-            game.currentTurnPlayerId++;
-        }
-        emit CurrentPlayerIndexChanged(game.roomId, game.currentTurnPlayerId);
-        if (game.currentTurnPlayerId == game.players.length) {
+        if (game.currentPlayerIndex == game.players.length) {
             emit Log("last player");
             setGameStage(game, GameStage.DealerTurn);
             dealerTurn(game);
             
             return true;
         }
+        PlayerState storage playerState = game.playerStates[game.players[game.currentPlayerIndex]];
+        bool playerHasNatural = playerState.hand.length == 2 && calculateHandScore(playerState.hand) == 21;
+        // Player with natural can't hit or stand
+        // TODO: player with natural can still have insurance
+        if (playerHasNatural) {
+            game.currentPlayerIndex++;
+            emit CurrentPlayerIndexChanged(game.roomId, game.currentPlayerIndex);
+            if (nextPlayerMove(game, isGameStart))
+                return;
+        }
+
+        if (!isGameStart) {
+            game.currentPlayerIndex++;
+        }
+        if (game.currentPlayerIndex == game.players.length) {
+            emit Log("last player");
+            setGameStage(game, GameStage.DealerTurn);
+            dealerTurn(game);
+            
+            return true;
+        }
+        emit CurrentPlayerIndexChanged(game.roomId, game.currentPlayerIndex);
 
         return false;
     }
@@ -141,7 +150,7 @@ library GameLibrary {
         bool flag = true;
         while (flag) {
             uint dealerScore = calculateHandScore(dealerState.hand);
-            if (dealerScore < 17 || dealerScore > 21) {
+            if (dealerScore < 17) {
                 dealCard(game, game.dealer);
             } else {
                 flag = false;
@@ -156,34 +165,56 @@ library GameLibrary {
 
         PlayerState storage dealerState = game.playerStates[game.dealer];
         uint dealerScore = calculateHandScore(dealerState.hand);
-        bool dealerHasNatural = dealerScore == 21;
+        bool dealerHasNatural = dealerState.hand.length == 2 && dealerScore == 21;
+        // FIXME: natural blackjack beats hand with 21
+        // TODO: The delaler will not play out his hand if there are no players in the game. 
+        // And if a player busts, and the dealer then plays out his hand (because there is still at least one 
+        // active player still in the game) and he subsequently busts,
+        // the player still loses because the player busted first.
         for(i = 0; i < game.players.length; i++) {
             PlayerState storage playerState = game.playerStates[game.players[i]];
             uint playerScore = calculateHandScore(playerState.hand);
-            bool playerHasNatural = playerScore == 21;
+            bool playerHasNatural = playerState.hand.length == 2 && playerScore == 21;
             // If any player has a natural and the dealer does not, the dealer immediately pays that player one and a half times the amount of his bet. If the dealer has a natural, he immediately collects the bets of all players who do not have naturals, (but no additional amount). If the dealer and another player both have naturals, the bet of that player is a stand-off (a tie), and the player takes back his chips.
             if (!dealerHasNatural && playerHasNatural) {
-                playerState.winnings += playerState.bet * 5 / 2 - playerState.bet;
+                emit Log("player has natural");
+                playerState.winnings += playerState.bet * 5 / 2;
+                dealerState.winnings -= playerState.bet * 5 / 2 - playerState.bet;
             } else if (dealerHasNatural && !playerHasNatural) {
+                emit Log("dealer has natural");
                 dealerState.winnings += playerState.bet;
             } else if (dealerHasNatural && playerHasNatural) {
+                emit Log("natural tie");
                 playerState.winnings += playerState.bet;
             } else {
-                if (dealerScore > 21) {
-                    playerState.winnings += playerState.bet;
+                if (playerScore > 21) {
+                    emit Log("player busts");
+                    dealerState.winnings += playerState.bet;
+                } else if (dealerScore > 21) {
+                    emit Log("dealer busts");
+                    playerState.winnings += playerState.bet * 2;
+                    dealerState.winnings -= playerState.bet;
                 } else {
                     if (dealerScore > playerScore) {
+                        emit Log("dealer wins");
                         dealerState.winnings += playerState.bet;
-                    } else {
+                    } else if (dealerScore == playerScore) {
+                        emit Log("tie");
                         playerState.winnings += playerState.bet;
+                    } else {
+                        emit Log("player wins");
+                        playerState.winnings += playerState.bet * 2;
+                        dealerState.winnings -= playerState.bet;
                     }
                 }
             }
         }
 
+        game.balanceController.payout(game.roomId, game.dealer);
         for(uint i = 0; i < game.players.length; i++) {
             playerState = game.playerStates[game.players[i]];
             
+            game.balanceController.payout(game.roomId, game.players[i]);
             // FIXME
             //balances[game.players[i]].balance += int(playerState.winnings);
         }

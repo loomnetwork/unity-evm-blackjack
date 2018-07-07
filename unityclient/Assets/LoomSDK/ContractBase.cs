@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Threading.Tasks;
 using Google.Protobuf;
+using Loom.Unity3d.Internal;
+using Loom.Unity3d.Internal.Protobuf;
 
 namespace Loom.Unity3d {
     /// <summary>
@@ -9,7 +11,7 @@ namespace Loom.Unity3d {
     /// into and querying that contract.
     /// </summary>
     public abstract class ContractBase<TChainEvent> {
-        protected DAppChainClient client;
+        protected readonly DAppChainClient client;
         protected event EventHandler<TChainEvent> eventReceived;
 
         /// <summary>
@@ -27,8 +29,8 @@ namespace Loom.Unity3d {
         /// </summary>
         /// <param name="client">Client to use to communicate with the contract.</param>
         /// <param name="contractAddr">Address of a contract on the Loom DAppChain.</param>
-        /// <param name="callerAddr">Address of the caller, generated from the public key of the tx signer.</param>
-        public ContractBase(DAppChainClient client, Address contractAddr, Address callerAddr)
+        /// <param name="callerAddr">Address of the caller, generated from the public key of the transaction signer.</param>
+        protected ContractBase(DAppChainClient client, Address contractAddr, Address callerAddr)
         {
             this.client = client;
             this.Address = contractAddr;
@@ -59,42 +61,6 @@ namespace Loom.Unity3d {
             }
         }
 
-        /// <summary>
-        /// Calls a smart contract method that mutates state.
-        /// The call into the smart contract is accomplished by committing a transaction to the DAppChain.
-        /// </summary>
-        /// <param name="tx">Transaction message.</param>
-        /// <returns>Nothing.</returns>
-        protected async Task CallAsync(Transaction tx)
-        {
-            await this.client.CommitTxAsync(tx);
-        }
-
-        protected Transaction CreateContractMethodCallTx(string hexData, VMType vmType) {
-            return CreateContractMethodCallTx(ByteString.CopyFrom(CryptoUtils.HexStringToBytes(hexData)), vmType);
-        }
-
-        protected Transaction CreateContractMethodCallTx(ByteString callTxInput, VMType vmType) {
-            var callTxBytes = new CallTx
-            {
-                VmType = vmType,
-                Input = callTxInput
-            }.ToByteString();
-
-            var msgTxBytes = new MessageTx
-            {
-                From = this.Caller,
-                To = this.Address,
-                Data = callTxBytes
-            }.ToByteString();
-
-            return new Transaction
-            {
-                Id = 2,
-                Data = msgTxBytes
-            };
-        }
-
         protected void InvokeChainEvent(object sender, RawChainEventArgs e)
         {
             if (this.eventReceived != null)
@@ -111,6 +77,50 @@ namespace Loom.Unity3d {
             {
                 InvokeChainEvent(sender, e);
             }
+        }
+
+        /// <summary>
+        /// Calls a smart contract method that mutates state.
+        /// The call into the smart contract is accomplished by committing a transaction to the DAppChain.
+        /// </summary>
+        /// <param name="tx">Transaction message.</param>
+        /// <returns>Nothing.</returns>
+        internal async Task CallAsync(Transaction tx)
+        {
+            await this.client.CommitTxAsync(tx);
+        }
+
+        internal Transaction CreateContractMethodCallTx(string hexData, VMType vmType) {
+            return CreateContractMethodCallTx(ByteString.CopyFrom(CryptoUtils.HexStringToBytes(hexData)), vmType);
+        }
+
+        internal Transaction CreateContractMethodCallTx(ByteString callTxInput, VMType vmType) {
+            var callTxBytes = new CallTx
+            {
+                VmType = vmType,
+                Input = callTxInput
+            }.ToByteString();
+
+            var msgTxBytes = new MessageTx
+            {
+                From = AddressToProtobufAddress(this.Caller),
+                To = AddressToProtobufAddress(this.Address),
+                Data = callTxBytes
+            }.ToByteString();
+
+            return new Transaction
+            {
+                Id = 2,
+                Data = msgTxBytes
+            };
+        }
+
+        private static Internal.Protobuf.Address AddressToProtobufAddress(Address address) {
+            return new Internal.Protobuf.Address
+            {
+                ChainId = address.ChainId,
+                Local = ByteString.CopyFrom(CryptoUtils.HexStringToBytes(address.LocalAddress))
+            };
         }
     }
 }

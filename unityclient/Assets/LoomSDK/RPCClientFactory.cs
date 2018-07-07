@@ -1,53 +1,59 @@
 ﻿using UnityEngine;
 using System;
+using Loom.Unity3d.Internal;
 
 namespace Loom.Unity3d
 {
-    public class RPCClientFactory
+    public class RpcClientFactory
     {
         private ILogger logger;
         private string websocketUrl;
         private string httpUrl;
 
-        public static RPCClientFactory Configure()
+        public static RpcClientFactory Configure()
         {
-            return new RPCClientFactory();
+            return new RpcClientFactory();
         }
 
-        public RPCClientFactory WithLogger(ILogger logger)
+        public RpcClientFactory WithLogger(ILogger logger)
         {
             this.logger = logger;
             return this;
         }
 
-        public RPCClientFactory WithWebSocket(string url)
+        public RpcClientFactory WithWebSocket(string url)
         {
             this.websocketUrl = url;
             return this;
         }
 
-        public RPCClientFactory WithHTTP(string url)
+        public RpcClientFactory WithHTTP(string url)
         {
             this.httpUrl = url;
             return this;
         }
-        
-        public IRPCClient Create()
+
+        public IRpcClient Create()
         {
             var logger = this.logger ?? NullLogger.Instance;
             if (this.websocketUrl != null)
             {
 #if UNITY_WEBGL && !UNITY_EDITOR
-                return new WebGL.WSRPCClient(this.websocketUrl) { Logger = logger };
+                return new Internal.WebGL.WebSocketRpcClient(this.websocketUrl) { Logger = logger };
 #else
-                return new WSSharpRPCClient(this.websocketUrl) { Logger = logger };
-#endif    
-            }
-            else if (this.httpUrl != null)
+                return new WebSocketRpcClient(this.websocketUrl) { Logger = logger };
+#endif
+            } else if (this.httpUrl != null)
             {
-                return new HTTPRPCClient(this.httpUrl) { Logger = logger };
+                return new HttpRpcClient(this.httpUrl) { Logger = logger };
             }
-            throw new InvalidOperationException("RPCClientFactory configuration invalid.");
+
+            throw new InvalidOperationException("RpcClientFactory configuration invalid.");
         }
+    }
+
+    [Obsolete("Use RpcClientFactory")]
+    public class RPCClientFactory : RpcClientFactory
+    {
     }
 }

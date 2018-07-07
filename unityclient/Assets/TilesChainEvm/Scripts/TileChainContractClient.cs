@@ -19,8 +19,8 @@ namespace Loom.Unity3d.Samples.TilesChainEvm
         private readonly Queue<Action> eventActions = new Queue<Action>();
         private EvmContract contract;
         private DAppChainClient client;
-        private IRPCClient reader;
-        private IRPCClient writer;
+        private IRpcClient reader;
+        private IRpcClient writer;
 
         public event Action<JsonTileMapState> TileMapStateUpdated;
 
@@ -88,11 +88,7 @@ namespace Loom.Unity3d.Samples.TilesChainEvm
             // required middleware
             this.client.TxMiddleware = new TxMiddleware(new ITxMiddlewareHandler[]
             {
-                new NonceTxMiddleware
-                {
-                    PublicKey = this.publicKey,
-                    Client = this.client
-                },
+                new NonceTxMiddleware(this.publicKey, this.client),
                 new SignedTxMiddleware(this.privateKey)
             });
 

@@ -4,6 +4,7 @@ import "./Owned.sol";
 import "./Mortal.sol";
 import "./CircuitBreaker.sol";
 import "./RandomProvider.sol";
+import "./BalanceController.sol";
 import "./libraries/DeckLibrary.sol";
 import "./libraries/GameLibrary.sol";
 
@@ -22,9 +23,7 @@ contract GameRooms {
     }
 }
 
-
-
-contract BlackJack is RandomProvider, GameRooms, Owned, Mortal, CircuitBreaker {
+contract BlackJack is RandomProvider, BalanceController, GameRooms, Owned, Mortal, CircuitBreaker {
     using GameLibrary for GameLibrary.GameState;
     
     uint16 constant DECK_COUNT = 6;
@@ -49,7 +48,20 @@ contract BlackJack is RandomProvider, GameRooms, Owned, Mortal, CircuitBreaker {
     constructor() public {
     }
     
+    function random(uint _x) public returns (uint256) {
+        return uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, nonce++, _x)));
+    }
+    
+    function payout(uint roomId, address balance) public {
+        GameLibrary.GameState storage game = games[roomId];
+        GameLibrary.PlayerState storage playerState = game.playerStates[balance];
+        balances[balance].balance += int(playerState.winnings);
+        playerState.winnings = 0;
+    }
+    
     function createRoom(bytes32 _name) public {
+        balances[msg.sender].exists = true;
+        
         uint roomIndex = rooms.length++;
         Room storage room = rooms[roomIndex];
         room.id = nonce;
@@ -58,7 +70,7 @@ contract BlackJack is RandomProvider, GameRooms, Owned, Mortal, CircuitBreaker {
         room.creator = msg.sender;
 
         GameLibrary.GameState storage game = games[room.id];
-        game.init(room.id, this);
+        game.init(room.id, this, this);
         nonce++;
         
         emit RoomCreated(msg.sender, room.id);
@@ -76,6 +88,7 @@ contract BlackJack is RandomProvider, GameRooms, Owned, Mortal, CircuitBreaker {
         GameLibrary.GameState storage game = games[_roomId];
         // TODO: check if player has enough balance to bet
         game.playerStates[msg.sender].bet = bet;
+        balances[msg.sender].exists = true;
         balances[msg.sender].balance -= int(bet);
     }
     
@@ -97,19 +110,19 @@ contract BlackJack is RandomProvider, GameRooms, Owned, Mortal, CircuitBreaker {
         return (game.playerStates[player].hand, game.playerStates[player].bet, game.playerStates[player].winnings);
     }
     
-    function getGameState(uint _roomId) public view returns (uint8[], uint8[]) {
+    function getGameState(uint _roomId) public view returns (GameLibrary.GameStage, uint8[], address[], uint, uint8[]) {
         GameLibrary.GameState storage game = games[_roomId];
-        return (game.usedCards, game.playerStates[game.dealer].hand);
+        return (game.stage, game.usedCards, game.players, game.currentPlayerIndex, game.playerStates[game.dealer].hand);
     }
 
-    function roomJoin(uint _roomId) public {
+    function joinRoom(uint _roomId) public {
         Room storage room = rooms[_getRoomIndexByRoomId(_roomId)];
         for(uint i = 0; i < room.players.length; i++) {
             if (room.players[i] == msg.sender)
-                revert("Player already added");
+                revert("already joined");
         }
         
-        rooms[_getRoomIndexByRoomId(_roomId)].players.push(msg.sender);
+        room.players.push(msg.sender);
     }
         
     function getRoomPlayers(uint _roomId) public view returns (address[]) {
@@ -136,9 +149,5 @@ contract BlackJack is RandomProvider, GameRooms, Owned, Mortal, CircuitBreaker {
         }
         
         revert("Unknown room id ");
-    }
-    
-    function random(uint _x) public returns (uint256) {
-        return uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, nonce++, _x)));
     }
 }
