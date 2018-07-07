@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading.Tasks;
 using Loom.Nethereum.ABI.FunctionEncoding.Attributes;
 using Loom.Unity3d;
@@ -25,6 +26,8 @@ namespace Loom.BlackJack
 
         private GameObject gameObject;
         private RoomObject roomObject;
+
+        public event Action RoomCreated;
 
         public BlackJackContractClient(string abi, byte[] privateKey, byte[] publicKey, ILogger logger)
         {
@@ -92,16 +95,20 @@ namespace Loom.BlackJack
         private void EventReceivedHandler(object sender, EvmChainEventArgs e)
         {
             Debug.Log("Event: " + e.EventName);
+            if (e.EventName == "RoomCreated")
+            {
+                eventActions.Enqueue(() => RoomCreated?.Invoke());
+            }
         }
 
         [FunctionOutput]
         public class GetRoomsOutput
         {
             [Parameter("uint256[]")]
-            public byte[] RoomIds { get; set; }
+            public List<BigInteger> RoomIds { get; set; }
 
             [Parameter("bytes32[]")]
-            public byte[][] RoomNames { get; set; }
+            public List<byte[]> RoomNames { get; set; }
         }
 
         [FunctionOutput]
@@ -152,7 +159,8 @@ namespace Loom.BlackJack
             public async Task CreateRoom(string roomName)
             {
                 await Client.ConnectToContract();
-                await Client.contract.CallAsync("createRoom", roomName);
+                byte[] roomNameBytes = Encoding.UTF8.GetBytes(roomName);
+                await Client.contract.CallAsync("createRoom", roomNameBytes);
             }
 
             public async Task JoinRoom(BigInteger roomId)
