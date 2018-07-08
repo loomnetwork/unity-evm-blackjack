@@ -24,11 +24,11 @@ library DeckLibrary {
         Spades
     }
     
-    function getCardValue(uint8 _card) internal pure returns (CardValue) {
-        return CardValue(_card % 13);
+    function getCardValue(uint8 card) internal pure returns (CardValue) {
+        return CardValue(card % 13);
     }
     
-    function getCardSuit(uint8 _card) internal pure returns (CardSuit) {
-        return CardSuit(_card / 13);
+    function getCardSuit(uint8 card) internal pure returns (CardSuit) {
+        return CardSuit(card / 13);
     }
 }

@@ -50,8 +50,8 @@ contract BlackJack is RandomProvider, BalanceController, GameRooms, Owned, Morta
     constructor() public {
     }
     
-    function random(uint _x) public returns (uint256) {
-        return uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, nonce++, _x)));
+    function random(uint x) public returns (uint256) {
+        return uint256(keccak256(abi.encodePacked(block.timestamp, block.difficulty, nonce++, x)));
     }
     
     function payout(uint roomId, address balance) public {
@@ -61,7 +61,7 @@ contract BlackJack is RandomProvider, BalanceController, GameRooms, Owned, Morta
         playerState.winnings = 0;
     }
     
-    function createRoom(bytes32 _name) public {
+    function createRoom(bytes32 name) public {
         clearInactiveRooms();
         
         balances[msg.sender].exists = true;
@@ -69,7 +69,7 @@ contract BlackJack is RandomProvider, BalanceController, GameRooms, Owned, Morta
         uint roomIndex = rooms.length++;
         Room storage room = rooms[roomIndex];
         room.id = nonce;
-        room.name = _name;
+        room.name = name;
         room.state = RoomState.WaitingForPlayers;
         room.creator = msg.sender;
         
@@ -80,19 +80,19 @@ contract BlackJack is RandomProvider, BalanceController, GameRooms, Owned, Morta
         nonce++;
     }
 
-    function getBalance(address _player) public view returns (int) {
-        PlayerBalance storage balance = balances[_player];
+    function getBalance(address player) public view returns (int) {
+        PlayerBalance storage balance = balances[player];
         if (!balance.exists)
             revert("balance doesn't exist");
             
         return balance.balance;
     }
 
-    function placeBet(uint _roomId, uint bet) public {
+    function placeBet(uint roomId, uint bet) public {
         if (bet == 0)
             revert("bet must be > 0");
             
-        GameLibrary.GameState storage game = games[_roomId];
+        GameLibrary.GameState storage game = games[roomId];
         // TODO: check if player has enough balance to bet?
         GameLibrary.PlayerState storage playerState = game.playerStates[msg.sender];
         if (playerState.bet != 0)
@@ -103,53 +103,56 @@ contract BlackJack is RandomProvider, BalanceController, GameRooms, Owned, Morta
         balances[msg.sender].balance -= int(bet);
     }
     
-    function startGame(uint _roomId) public {
-        uint roomIndex = _getRoomIndexByRoomId(_roomId);
+    function startGame(uint roomId) public {
+        uint roomIndex = getRoomIndexByRoomId(roomId);
         Room storage room = rooms[roomIndex];
         if (room.creator != msg.sender)
             revert("only room creator can start game");
             
         room.state = RoomState.Started;
         
-        GameLibrary.GameState storage game = games[_roomId];
+        GameLibrary.GameState storage game = games[roomId];
         game.startGame(room.creator, room.players);
         
         // Started games are not discoverable
         deleteRoom(roomIndex);
     }
     
-    function playerDecision(uint _roomId, GameLibrary.PlayerDecision _decision) public {
-        GameLibrary.GameState storage game = games[_roomId];
-        game.playerDecision(_decision);
+    function playerDecision(uint roomId, GameLibrary.PlayerDecision decision) public {
+        GameLibrary.GameState storage game = games[roomId];
+        game.playerDecision(decision);
     }
 
-    function getGameStatePlayer(uint _roomId, address player) public view returns (uint8[], uint, uint) {
-        GameLibrary.GameState storage game = games[_roomId];
+    function getGameStatePlayer(uint roomId, address player) public view returns (uint8[], uint, uint) {
+        GameLibrary.GameState storage game = games[roomId];
         return (game.playerStates[player].hand, game.playerStates[player].bet, game.playerStates[player].winnings);
     }
     
-    function getGameState(uint _roomId) public view returns (GameLibrary.GameStage, uint8[], address[], uint, uint8[]) {
-        GameLibrary.GameState storage game = games[_roomId];
+    function getGameState(uint roomId) public view returns (GameLibrary.GameStage, uint8[], address[], uint, uint8[]) {
+        GameLibrary.GameState storage game = games[roomId];
         return (game.stage, game.usedCards, game.players, game.currentPlayerIndex, game.playerStates[game.dealer].hand);
     }
 
-    function joinRoom(uint _roomId) public {
-        Room storage room = rooms[_getRoomIndexByRoomId(_roomId)];
+    function joinRoom(uint roomId) public {
+        Room storage room = rooms[getRoomIndexByRoomId(roomId)];
         for(uint i = 0; i < room.players.length; i++) {
-            if (room.players[i] == msg.sender)
-                revert("already joined");
+            if (room.players[i] == msg.sender) {
+                // Already joined
+                return;
+            }
         }
         
         room.players.push(msg.sender);
+        games[roomId].players.push(msg.sender);
     }
     
-    function leaveRoom(uint _roomId) public {
-        (bool found, uint roomIndex) = _getRoomIndexByRoomIdSafe(_roomId);
+    function leaveRoom(uint roomId) public {
+        (bool found, uint roomIndex) = getRoomIndexByRoomIdSafe(roomId);
         if (!found)
             return;
             
         Room storage room = rooms[roomIndex];
-        GameLibrary.GameState storage game = games[_roomId];
+        GameLibrary.GameState storage game = games[roomId];
         bool isInGame = game.dealer == msg.sender;
         for(uint i = 0; i < game.players.length; i++) {
             if (room.players[i] == msg.sender) {
@@ -164,8 +167,8 @@ contract BlackJack is RandomProvider, BalanceController, GameRooms, Owned, Morta
         deleteGameAndRoom(game, roomIndex);
     }
         
-    function getRoomPlayers(uint _roomId) public view returns (address[]) {
-        return rooms[_getRoomIndexByRoomId(_roomId)].players;
+    function getRoomPlayers(uint roomId) public view returns (address[]) {
+        return rooms[getRoomIndexByRoomId(roomId)].players;
     }
 
     function getRooms() public view returns (uint[], bytes32[]) {
@@ -209,39 +212,20 @@ contract BlackJack is RandomProvider, BalanceController, GameRooms, Owned, Morta
         }
     }
 
-    function _getRoomIndexByRoomIdSafe(uint _roomId) private view returns (bool, uint) {
+    function getRoomIndexByRoomIdSafe(uint roomId) private view returns (bool, uint) {
         for (uint i = 0; i < rooms.length; i++) {
-            if (rooms[i].id == _roomId)
+            if (rooms[i].id == roomId)
                 return (true, i);
         }
         
         return (false, 0);
     }
 
-    function _getRoomIndexByRoomId(uint _roomId) private view returns (uint) {
-        (bool found, uint roomIndex) = _getRoomIndexByRoomIdSafe(_roomId);
+    function getRoomIndexByRoomId(uint roomId) private view returns (uint) {
+        (bool found, uint roomIndex) = getRoomIndexByRoomIdSafe(roomId);
         if (!found)
             revert("Unknown room id ");
             
         return roomIndex;
-    }
-
-    event TestEvent(uint number);
-
-    function sendTestEvents(uint base) public {
-        emit TestEvent(base + 1);
-        emit TestEvent(base + 2);
-        emit TestEvent(base + 3);
-        emit TestEvent(base + 4);
-        emit TestEvent(base + 5);
-        emit TestEvent(base + 6);
-        emit TestEvent(base + 7);
-        emit TestEvent(base + 8);
-        emit TestEvent(base + 9);
-        emit TestEvent(base + 10);
-        emit TestEvent(base + 12);
-        emit TestEvent(base + 13);
-        emit TestEvent(base + 14);
-        emit TestEvent(base + 15);
     }
 }

@@ -14,6 +14,7 @@ namespace Loom.BlackJack
     /// </summary>
     public class BlackJackContractClient
     {
+        private readonly string backendHost;
         private readonly string abi;
         private readonly Queue<Action> eventActions = new Queue<Action>();
         private readonly ILogger logger;
@@ -39,8 +40,9 @@ namespace Loom.BlackJack
         public event CurrentPlayerIndexChangedEventHandler CurrentPlayerIndexChanged;
         public event PlayerDecisionReceivedEventHandler PlayerDecisionReceived;
 
-        public BlackJackContractClient(string abi, byte[] privateKey, byte[] publicKey, ILogger logger)
+        public BlackJackContractClient(string backendHost, string abi, byte[] privateKey, byte[] publicKey, ILogger logger)
         {
+            this.backendHost = backendHost;
             this.abi = abi;
             this.privateKey = privateKey;
             this.publicKey = publicKey;
@@ -76,12 +78,12 @@ namespace Loom.BlackJack
         {
             this.writer = RpcClientFactory.Configure()
                 .WithLogger(this.logger)
-                .WithWebSocket("ws://127.0.0.1:46657/websocket")
+                .WithWebSocket("ws://" + this.backendHost + ":46657/websocket")
                 .Create();
 
             this.reader = RpcClientFactory.Configure()
                 .WithLogger(this.logger)
-                .WithWebSocket("ws://127.0.0.1:9999/queryws")
+                .WithWebSocket("ws://" + this.backendHost + ":9999/queryws")
                 .Create();
 
             this.client = new DAppChainClient(this.writer, this.reader)

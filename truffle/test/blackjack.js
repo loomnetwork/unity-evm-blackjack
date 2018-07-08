@@ -1,3 +1,6 @@
+let tryCatch = require("./exceptions.js").tryCatch;
+let errTypes = require("./exceptions.js").errTypes;
+
 const PlayerDecision = Object.freeze({
     Stand: 0,
     Hit: 1
@@ -63,8 +66,7 @@ contract("TestingBlackJack", function(accounts) {
     let player2Address = accounts[2];
     let contract;
 
-    let state = {
-    }
+    let state = {};
 
     function throwError() {
         //throw Error();
@@ -138,8 +140,39 @@ contract("TestingBlackJack", function(accounts) {
         assert.equal(hexToAscii(rooms[1][1]), "test room2");
     });
 
+    it("should not double-join", async function() {
+        await contract.createRoom("test room1");
+        let roomCreatedEvent = await getLastEventArgs(contract.RoomCreated());
+        let roomId = roomCreatedEvent.roomId;
+
+        await contract.joinRoom(roomId, { from: player1Address });
+        var gameState = await contract.getGameState(roomId);
+        assert.equal(gameState[2].length, 1);
+        await contract.joinRoom(roomId, { from: player1Address });
+        var gameState = await contract.getGameState(roomId);
+        assert.equal(gameState[2].length, 1);
+    });
+
+    it("should not double-bet", async function() {
+        await contract.createRoom("test room1");
+        let roomCreatedEvent = await getLastEventArgs(contract.RoomCreated());
+        let roomId = roomCreatedEvent.roomId;
+
+        await contract.joinRoom(roomId, { from: player1Address });
+        await contract.placeBet(roomId, 100, { from: player1Address });
+
+        await tryCatch(contract.placeBet(roomId, 100, { from: player1Address }), errTypes.revert);
+    });
+
     it("1 player - player wins", async function() {
-        let roomId = await startTestOnePlayerGame([CardValue.Five, CardValue.Four, CardValue.Jack, CardValue.Five, CardValue.Seven, CardValue.Six]);
+        let roomId = await startTestOnePlayerGame([
+            CardValue.Five,
+            CardValue.Four,
+            CardValue.Jack,
+            CardValue.Five,
+            CardValue.Seven,
+            CardValue.Six
+        ]);
 
         assert.deepEqual(state.dealer.hand, [CardValue.Four]);
         assert.deepEqual(state.player1.hand, [CardValue.Five, CardValue.Jack]);
@@ -158,7 +191,14 @@ contract("TestingBlackJack", function(accounts) {
     });
 
     it("1 player - dealer wins", async function() {
-        let roomId = await startTestOnePlayerGame([CardValue.Three, CardValue.Four, CardValue.Five, CardValue.Six, CardValue.Seven, CardValue.Eight]);
+        let roomId = await startTestOnePlayerGame([
+            CardValue.Three,
+            CardValue.Four,
+            CardValue.Five,
+            CardValue.Six,
+            CardValue.Seven,
+            CardValue.Eight
+        ]);
 
         assert.deepEqual(state.dealer.hand, [CardValue.Four]);
         assert.deepEqual(state.player1.hand, [CardValue.Three, CardValue.Five]);
@@ -177,7 +217,13 @@ contract("TestingBlackJack", function(accounts) {
     });
 
     it("1 player - tie", async function() {
-        let roomId = await startTestOnePlayerGame([CardValue.Jack, CardValue.Jack, CardValue.Jack, CardValue.Jack, CardValue.Jack]);
+        let roomId = await startTestOnePlayerGame([
+            CardValue.Jack,
+            CardValue.Jack,
+            CardValue.Jack,
+            CardValue.Jack,
+            CardValue.Jack
+        ]);
 
         assert.deepEqual(state.dealer.hand, [CardValue.Jack]);
         assert.deepEqual(state.player1.hand, [CardValue.Jack, CardValue.Jack]);
@@ -195,7 +241,14 @@ contract("TestingBlackJack", function(accounts) {
     });
 
     it("1 player - player busts", async function() {
-        let roomId = await startTestOnePlayerGame([CardValue.Three, CardValue.Four, CardValue.Jack, CardValue.Queen, CardValue.Seven, CardValue.Eight]);
+        let roomId = await startTestOnePlayerGame([
+            CardValue.Three,
+            CardValue.Four,
+            CardValue.Jack,
+            CardValue.Queen,
+            CardValue.Seven,
+            CardValue.Eight
+        ]);
 
         assert.deepEqual(state.dealer.hand, [CardValue.Four]);
         assert.deepEqual(state.player1.hand, [CardValue.Three, CardValue.Jack]);
@@ -213,7 +266,13 @@ contract("TestingBlackJack", function(accounts) {
     });
 
     it("1 player - dealer busts", async function() {
-        let roomId = await startTestOnePlayerGame([CardValue.Jack, CardValue.Four, CardValue.King, CardValue.Jack, CardValue.Queen]);
+        let roomId = await startTestOnePlayerGame([
+            CardValue.Jack,
+            CardValue.Four,
+            CardValue.King,
+            CardValue.Jack,
+            CardValue.Queen
+        ]);
 
         assert.deepEqual(state.dealer.hand, [CardValue.Four]);
         assert.deepEqual(state.player1.hand, [CardValue.Jack, CardValue.King]);
@@ -231,19 +290,30 @@ contract("TestingBlackJack", function(accounts) {
     });
 
     it("1 player - player has natural", async function() {
-        let roomId = await startTestOnePlayerGame([CardValue.Ace, CardValue.Four, CardValue.Jack, CardValue.Six, CardValue.Seven]);
+        let roomId = await startTestOnePlayerGame([
+            CardValue.Ace,
+            CardValue.Four,
+            CardValue.Jack,
+            CardValue.Six,
+            CardValue.Seven
+        ]);
 
         assert.deepEqual(state.dealer.hand, [CardValue.Four, CardValue.Six, CardValue.Seven]);
         assert.deepEqual(state.player1.hand, [CardValue.Ace, CardValue.Jack]);
 
         assert.equal(state.dealer.balance, -150);
         assert.equal(state.player1.balance, 150);
-        
+
         throwError();
     });
 
     it("1 player - dealer has natural", async function() {
-        let roomId = await startTestOnePlayerGame([CardValue.Ten, CardValue.Ace, CardValue.Jack, CardValue.Queen]);
+        let roomId = await startTestOnePlayerGame([
+            CardValue.Ten,
+            CardValue.Ace,
+            CardValue.Jack,
+            CardValue.Queen
+        ]);
         await contract.playerDecision(roomId, PlayerDecision.Stand, { from: player1Address });
 
         await updateOnePlayerState(roomId);
@@ -258,7 +328,12 @@ contract("TestingBlackJack", function(accounts) {
     });
 
     it("1 player - dealer and player have natural", async function() {
-        let roomId = await startTestOnePlayerGame([CardValue.Ace, CardValue.Ace, CardValue.Jack, CardValue.Queen]);
+        let roomId = await startTestOnePlayerGame([
+            CardValue.Ace,
+            CardValue.Ace,
+            CardValue.Jack,
+            CardValue.Queen
+        ]);
 
         assert.deepEqual(state.dealer.hand, [CardValue.Ace, CardValue.Queen]);
         assert.deepEqual(state.player1.hand, [CardValue.Ace, CardValue.Jack]);
@@ -270,7 +345,13 @@ contract("TestingBlackJack", function(accounts) {
     });
 
     it("1 player - dealer has blackjack, player has 21", async function() {
-        let roomId = await startTestOnePlayerGame([CardValue.Jack, CardValue.Queen, CardValue.Five, CardValue.Six, CardValue.Ace]);
+        let roomId = await startTestOnePlayerGame([
+            CardValue.Jack,
+            CardValue.Queen,
+            CardValue.Five,
+            CardValue.Six,
+            CardValue.Ace
+        ]);
 
         assert.deepEqual(state.dealer.hand, [CardValue.Queen]);
         assert.deepEqual(state.player1.hand, [CardValue.Jack, CardValue.Five]);
@@ -294,9 +375,16 @@ contract("TestingBlackJack", function(accounts) {
     });
 
     it("2 player - player1 wins, player2 loses", async function() {
-        let roomId = await startTestTwoPlayerGame(
-            [CardValue.Jack, CardValue.Four, CardValue.Four, CardValue.Queen, CardValue.Seven, CardValue.Five, CardValue.Four, CardValue.Nine]
-        );
+        let roomId = await startTestTwoPlayerGame([
+            CardValue.Jack,
+            CardValue.Four,
+            CardValue.Four,
+            CardValue.Queen,
+            CardValue.Seven,
+            CardValue.Five,
+            CardValue.Four,
+            CardValue.Nine
+        ]);
 
         assert.deepEqual(state.dealer.hand, [CardValue.Four]);
         assert.deepEqual(state.player1.hand, [CardValue.Jack, CardValue.Queen]);
@@ -320,16 +408,25 @@ contract("TestingBlackJack", function(accounts) {
         assert.equal(state.player2.score, 16);
 
         assert.equal(state.dealer.balance, -100 + 500);
-        assert.equal(state.player1.balance, 100); 
+        assert.equal(state.player1.balance, 100);
         assert.equal(state.player2.balance, -500);
 
         throwError();
     });
 
     it("2 player - player1 busts, player2 wins", async function() {
-        let roomId = await startTestTwoPlayerGame(
-            [CardValue.Jack, CardValue.Four, CardValue.Four, CardValue.Four, CardValue.Eight, CardValue.Nine, CardValue.Six, CardValue.Two, CardValue.Nine, CardValue.Five]
-        );
+        let roomId = await startTestTwoPlayerGame([
+            CardValue.Jack,
+            CardValue.Four,
+            CardValue.Four,
+            CardValue.Four,
+            CardValue.Eight,
+            CardValue.Nine,
+            CardValue.Six,
+            CardValue.Two,
+            CardValue.Nine,
+            CardValue.Five
+        ]);
 
         assert.deepEqual(state.dealer.hand, [CardValue.Four]);
         assert.deepEqual(state.player1.hand, [CardValue.Jack, CardValue.Four]);
@@ -347,23 +444,37 @@ contract("TestingBlackJack", function(accounts) {
 
         assert.deepEqual(state.dealer.hand, [CardValue.Four, CardValue.Nine, CardValue.Five]);
         assert.deepEqual(state.player1.hand, [CardValue.Jack, CardValue.Four, CardValue.Nine]);
-        assert.deepEqual(state.player2.hand, [CardValue.Four, CardValue.Eight, CardValue.Six, CardValue.Two]);
+        assert.deepEqual(state.player2.hand, [
+            CardValue.Four,
+            CardValue.Eight,
+            CardValue.Six,
+            CardValue.Two
+        ]);
 
         assert.equal(state.dealer.score, 18);
         assert.equal(state.player1.score, 23);
         assert.equal(state.player2.score, 20);
 
         assert.equal(state.dealer.balance, 100 - 500);
-        assert.equal(state.player1.balance, -100); 
+        assert.equal(state.player1.balance, -100);
         assert.equal(state.player2.balance, 500);
 
         throwError();
     });
 
     it("2 player - dealer busts, player1 busts, player2 wins", async function() {
-        let roomId = await startTestTwoPlayerGame(
-            [CardValue.Jack, CardValue.Four, CardValue.Jack, CardValue.Four, CardValue.Eight, CardValue.Nine, CardValue.Six, CardValue.Two, CardValue.Five, CardValue.Nine]
-        );
+        let roomId = await startTestTwoPlayerGame([
+            CardValue.Jack,
+            CardValue.Four,
+            CardValue.Jack,
+            CardValue.Four,
+            CardValue.Eight,
+            CardValue.Nine,
+            CardValue.Six,
+            CardValue.Two,
+            CardValue.Five,
+            CardValue.Nine
+        ]);
 
         assert.deepEqual(state.dealer.hand, [CardValue.Jack]);
         assert.deepEqual(state.player1.hand, [CardValue.Jack, CardValue.Four]);
@@ -381,26 +492,25 @@ contract("TestingBlackJack", function(accounts) {
 
         assert.deepEqual(state.dealer.hand, [CardValue.Jack, CardValue.Five, CardValue.Nine]);
         assert.deepEqual(state.player1.hand, [CardValue.Jack, CardValue.Four, CardValue.Nine]);
-        assert.deepEqual(state.player2.hand, [CardValue.Four, CardValue.Eight, CardValue.Six, CardValue.Two]);
+        assert.deepEqual(state.player2.hand, [
+            CardValue.Four,
+            CardValue.Eight,
+            CardValue.Six,
+            CardValue.Two
+        ]);
 
         assert.equal(state.dealer.score, 24);
         assert.equal(state.player1.score, 23);
         assert.equal(state.player2.score, 20);
 
         assert.equal(state.dealer.balance, 100 - 500);
-        assert.equal(state.player1.balance, -100); 
+        assert.equal(state.player1.balance, -100);
         assert.equal(state.player2.balance, 500);
 
         throwError();
     });
 
-    it("event test", async function() {
-        await contract.sendTestEvents(0);
-
-        //throw Error();
-    });
-
-            /*         
+    /*         
         let event = contract.allEvents();
          event.watch((error, log) => {
             // Do whatever you want
@@ -409,7 +519,7 @@ contract("TestingBlackJack", function(accounts) {
             }
         });  */
 
-        /*           event.get((error, logs) => {
+    /*           event.get((error, logs) => {
             if (!error) {
                 console.log("count: " + logs.length);
                 logs.forEach(log => console.log(log.args))

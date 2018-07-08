@@ -10,14 +10,17 @@ using Loom.Nethereum.ABI.Model;
 using Loom.Unity3d;
 using UnityEngine;
 using UnityEngine.UI;
+using Random = UnityEngine.Random;
 using Vector3 = UnityEngine.Vector3;
 
 namespace Loom.BlackJack
 {
     public class Controller : MonoBehaviour
     {
-        public GamePrefabsContainer PrefabsContainer;
+        public string BackendHost = "127.0.0.1";
         public TextAsset ContractAbi;
+
+        public GamePrefabsContainer PrefabsContainer;
         public GameObject GameContainer;
         public GameObject RoomListContainer;
         public GameObject RoomList;
@@ -44,7 +47,7 @@ namespace Loom.BlackJack
             {
                 var privateKey = CryptoUtils.GeneratePrivateKey();
                 var publicKey = CryptoUtils.PublicKeyFromPrivateKey(privateKey);
-                this.clients[i] = new BlackJackContractClient(this.ContractAbi.text, privateKey, publicKey, Debug.unityLogger);
+                this.clients[i] = new BlackJackContractClient(BackendHost, this.ContractAbi.text, privateKey, publicKey, Debug.unityLogger);
             }
 
             this.client = this.clients[0];
@@ -277,9 +280,10 @@ namespace Loom.BlackJack
         {
             GUILayout.BeginVertical(GUI.skin.box);
             {
+                GUILayout.Label("Debug Menu");
                 GUILayout.BeginHorizontal();
                 {
-                    GUILayout.Label("Client " + Array.IndexOf(this.clients, this.debugClient));
+                    GUILayout.Label("Player " + Array.IndexOf(this.clients, this.debugClient));
                     for (int i = 0; i < this.clients.Length; i++)
                     {
                         if (GUILayout.Button(i.ToString()))
@@ -323,6 +327,11 @@ namespace Loom.BlackJack
                 if (GUILayout.Button("Update"))
                 {
                     await UpdateGameState();
+                }
+
+                if (GUILayout.Button("Create room"))
+                {
+                    await this.debugClient.Room.CreateRoom("test " + Random.Range(100, 1000));
                 }
             }
             GUILayout.EndVertical();

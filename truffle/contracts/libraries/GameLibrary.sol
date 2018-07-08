@@ -99,7 +99,7 @@ library GameLibrary {
         return false;
     }
     
-    function playerDecision(GameState storage self, PlayerDecision _decision) internal {
+    function playerDecision(GameState storage self, PlayerDecision decision) internal {
         self.lastUpdateTime = now;
         
         bool isInGame = false;
@@ -115,14 +115,14 @@ library GameLibrary {
         if (!isInGame)
             revert("not in this self");
         
-        emit PlayerDecisionReceived(self.roomId, self.currentPlayerIndex, self.players[self.currentPlayerIndex], uint(_decision));
+        emit PlayerDecisionReceived(self.roomId, self.currentPlayerIndex, self.players[self.currentPlayerIndex], uint(decision));
         
-        if (_decision == PlayerDecision.Stand) {
+        if (decision == PlayerDecision.Stand) {
             nextPlayerMove(self, false);
             return;
         }
         
-        if (_decision == PlayerDecision.Hit) {
+        if (decision == PlayerDecision.Hit) {
             dealCard(self, msg.sender);
             uint score = calculateHandScore(self.playerStates[msg.sender].hand);
             if (score >= 21) {
@@ -245,14 +245,14 @@ library GameLibrary {
         emit Log("self end");
     }
     
-    function getCardScore(DeckLibrary.CardValue _card) internal pure returns (uint, uint) {
-        if (_card == DeckLibrary.CardValue.Ace) {
+    function getCardScore(DeckLibrary.CardValue card) internal pure returns (uint, uint) {
+        if (card == DeckLibrary.CardValue.Ace) {
             return (1, 11);
-        } else if (_card < DeckLibrary.CardValue.Ace && _card > DeckLibrary.CardValue.Ten) {
+        } else if (card < DeckLibrary.CardValue.Ace && card > DeckLibrary.CardValue.Ten) {
             return (10, 10);
         }
         
-        uint score = uint(_card) + 2;
+        uint score = uint(card) + 2;
         return (score, score);
     }
     
