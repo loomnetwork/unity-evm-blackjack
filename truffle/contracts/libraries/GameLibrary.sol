@@ -134,7 +134,6 @@ library GameLibrary {
     function nextPlayerMove(GameState storage self, bool isGameStart) internal returns (bool) {
         if (self.currentPlayerIndex == self.players.length) {
             emit Log("last player");
-            setGameStage(self, GameStage.DealerTurn);
             dealerTurn(self);
             
             return true;
@@ -155,7 +154,6 @@ library GameLibrary {
         }
         if (self.currentPlayerIndex == self.players.length) {
             emit Log("last player");
-            setGameStage(self, GameStage.DealerTurn);
             dealerTurn(self);
             
             return true;
@@ -172,6 +170,23 @@ library GameLibrary {
     }
     
     function dealerTurn(GameState storage self) internal {
+        // Check if all player are bust, dealer makes no move if so
+        bool allPlayersBust = true;
+        for(uint i = 0; i < self.players.length; i++) {
+            PlayerState storage playerState = self.playerStates[self.players[i]];
+            uint playerScore = calculateHandScore(playerState.hand);
+            if (playerScore <= 21) {
+                allPlayersBust = false;
+                break;
+            }
+        }
+
+        if (allPlayersBust) {
+            gameEnd(self);
+            return;
+        }
+
+        setGameStage(self, GameStage.DealerTurn);
         PlayerState storage dealerState = self.playerStates[self.dealer];
         bool flag = true;
         while (flag) {

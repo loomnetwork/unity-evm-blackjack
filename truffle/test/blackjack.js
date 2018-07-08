@@ -29,7 +29,7 @@ const CardSuit = Object.freeze({
     Spades: 3
 });
 
-var TestingBlackJack = artifacts.require("./TestingBlackJack.sol");
+var TestingBlackjack = artifacts.require("./TestingBlackjack.sol");
 
 function hexToAscii(hex) {
     var str = "";
@@ -60,7 +60,7 @@ async function getLastEventArgs(event) {
     });
 }
 
-contract("TestingBlackJack", function(accounts) {
+contract("TestingBlackjack", function(accounts) {
     let dealerAddress = accounts[0];
     let player1Address = accounts[1];
     let player2Address = accounts[2];
@@ -129,7 +129,7 @@ contract("TestingBlackJack", function(accounts) {
     }
 
     beforeEach("Deploy contract", async function() {
-        contract = await TestingBlackJack.new();
+        contract = await TestingBlackjack.new();
     });
 
     it("should create rooms", async function() {
@@ -256,7 +256,8 @@ contract("TestingBlackJack", function(accounts) {
         await contract.playerDecision(roomId, PlayerDecision.Hit, { from: player1Address });
         await updateOnePlayerState(roomId);
 
-        assert.deepEqual(state.dealer.hand, [CardValue.Four, CardValue.Seven, CardValue.Eight]);
+        // If player busts, dealer must not do his move
+        assert.deepEqual(state.dealer.hand, [CardValue.Four]);
         assert.deepEqual(state.player1.hand, [CardValue.Three, CardValue.Jack, CardValue.Queen]);
 
         assert.equal(state.dealer.balance, 100);

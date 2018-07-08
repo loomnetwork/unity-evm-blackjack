@@ -1,17 +1,8 @@
 var fs = require("fs");
-
-var BlackJack = artifacts.require("./BlackJack.sol");
+var Blackjack = artifacts.require("./Blackjack.sol");
 
 module.exports = function(deployer) {
-    console.log("Copying BlackJack.bin to Loom DAppChain instance");
-    try {
-        fs.mkdirSync("../dappchain/build/");
-    } catch (err) {
-        if (err.code !== "EEXIST") throw err;
-    }
-    fs.writeFileSync("../dappchain/build/BlackJack.bin", BlackJack.bytecode.substring(2), function(
-        err
-    ) {
-        throw Error(err);
-    });
+    console.log("Copying Blackjack.bin to Loom DAppChain instance");
+    fs.existsSync("../dappchain/build/") || fs.mkdirSync("../dappchain/build/");
+    fs.writeFileSync("../dappchain/build/Blackjack.bin", Blackjack.bytecode.substring(2));
 };

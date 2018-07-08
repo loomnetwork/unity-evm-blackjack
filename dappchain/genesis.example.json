@@ -3,8 +3,8 @@
         {
             "vm": "EVM",
             "format": "hex",
-            "name": "BlackJack",
-            "location": "BlackJack.bin"
+            "name": "Blackjack",
+            "location": "Blackjack.bin"
         }
     ]
 }
