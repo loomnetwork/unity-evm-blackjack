@@ -9,8 +9,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 0}
-  m_Name: New Card Index To Card Sprite Map
-  m_EditorClassIdentifier: Assembly-CSharp::CardIndexToCardSpriteMap
+  m_Name: CardIndexToCardSpriteMap
+  m_EditorClassIdentifier: Assembly-CSharp:Loom.BlackJack:CardIndexToCardSpriteMap
   CardSprite:
   - {fileID: 21300000, guid: a07df81898b221446839a4fa870b5e0d, type: 3}
   - {fileID: 21300000, guid: aea4296946f78fa4898067820d7c964d, type: 3}

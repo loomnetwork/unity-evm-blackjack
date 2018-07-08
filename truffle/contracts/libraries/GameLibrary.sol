@@ -6,11 +6,14 @@ import "./DeckLibrary.sol";
 
 library GameLibrary {
     event RoomCreated(address creator, uint roomId);
-    event GameStageChanged(uint roomId, GameStage stage);
-    event CurrentPlayerIndexChanged(uint roomId, uint playerIndex);
+    event PlayerJoined(uint roomId, address player);
+    event GameStageChanged(uint roomId, uint stage);
+    event CurrentPlayerIndexChanged(uint roomId, uint playerIndex, address playerAddress);
+    event PlayerDecisionReceived(uint roomId, uint playerIndex, address playerAddres, uint playerDecision);
     event Log(string message);
 
     struct GameState {
+        uint lastUpdateTime;
         uint roomId;
         GameStage stage;
         uint8[] usedCards;
@@ -42,137 +45,160 @@ library GameLibrary {
     }
     
     function init(GameState storage self, uint roomId, RandomProvider randomProvider, BalanceController balanceController) internal {
+        self.lastUpdateTime = now;
         self.roomId = roomId;
         self.randomProvider = randomProvider;
         self.balanceController = balanceController;
         setGameStage(self, GameStage.Betting);
     }
     
-    function startGame(GameState storage game, address dealer, address[] players) internal {
-        setGameStage(game, GameStage.Started);
-        game.dealer = dealer;
-        game.players = players;
-        if (game.players.length == 0)
-            revert("game.players.length == 0");
+    function destroy(GameState storage self) internal {
+        delete self.playerStates[self.dealer];
+        for(uint i = 0; i < self.players.length; i++) {
+            delete self.playerStates[self.players[i]];
+        }
+    }
+    
+    function startGame(GameState storage self, address dealer, address[] players) internal {
+        setGameStage(self, GameStage.Started);
+        self.dealer = dealer;
+        self.players = players;
+        if (self.players.length == 0)
+            revert("self.players.length == 0");
 
         uint i;
 
         // Check if betted
-        for(i = 0; i < game.players.length; i++) {
-            if (game.playerStates[game.players[i]].bet == 0)
+        for(i = 0; i < self.players.length; i++) {
+            if (self.playerStates[self.players[i]].bet == 0)
                 revert("not all players have betted");
         }
 
         // Initial deal
-        for(i = 0; i < game.players.length; i++) {
-            dealCard(game, game.players[i]);
+        for(i = 0; i < self.players.length; i++) {
+            dealCard(self, self.players[i]);
         }
 
-        dealCard(game, game.dealer);
+        dealCard(self, self.dealer);
 
-        for(i = 0; i < game.players.length; i++) {
-            dealCard(game, game.players[i]);
+        for(i = 0; i < self.players.length; i++) {
+            dealCard(self, self.players[i]);
         }
         
-        setGameStage(game, GameStage.PlayersTurn);
-        nextPlayerMove(game, true);
+        setGameStage(self, GameStage.PlayersTurn);
+        nextPlayerMove(self, true);
     }
     
-    function playerDecision(GameState storage game, PlayerDecision _decision) internal {
+    function isPlayerInGame(GameState storage self, address player) internal view returns (bool) {
+        for(uint i = 0; i < self.players.length; i++) {
+            if (self.players[i] == player) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    function playerDecision(GameState storage self, PlayerDecision _decision) internal {
+        self.lastUpdateTime = now;
+        
         bool isInGame = false;
-        for(uint i = 0; i < game.players.length; i++) {
-            if (game.players[i] == msg.sender) {
+        for(uint i = 0; i < self.players.length; i++) {
+            if (self.players[i] == msg.sender) {
                 isInGame = true;
-                if (i != game.currentPlayerIndex) {
+                if (i != self.currentPlayerIndex) {
                     revert("not your turn");
                 }
             }
         }
         
         if (!isInGame)
-            revert("not in this game");
+            revert("not in this self");
+        
+        emit PlayerDecisionReceived(self.roomId, self.currentPlayerIndex, self.players[self.currentPlayerIndex], uint(_decision));
         
         if (_decision == PlayerDecision.Stand) {
-            nextPlayerMove(game, false);
+            nextPlayerMove(self, false);
             return;
         }
         
         if (_decision == PlayerDecision.Hit) {
-            dealCard(game, msg.sender);
-            uint score = calculateHandScore(game.playerStates[msg.sender].hand);
+            dealCard(self, msg.sender);
+            uint score = calculateHandScore(self.playerStates[msg.sender].hand);
             if (score >= 21) {
-                nextPlayerMove(game, false);
+                nextPlayerMove(self, false);
             }
         }
     }
     
-    function nextPlayerMove(GameState storage game, bool isGameStart) internal returns (bool) {
-        if (game.currentPlayerIndex == game.players.length) {
+    function nextPlayerMove(GameState storage self, bool isGameStart) internal returns (bool) {
+        if (self.currentPlayerIndex == self.players.length) {
             emit Log("last player");
-            setGameStage(game, GameStage.DealerTurn);
-            dealerTurn(game);
+            setGameStage(self, GameStage.DealerTurn);
+            dealerTurn(self);
             
             return true;
         }
-        PlayerState storage playerState = game.playerStates[game.players[game.currentPlayerIndex]];
+        PlayerState storage playerState = self.playerStates[self.players[self.currentPlayerIndex]];
         bool playerHasNatural = playerState.hand.length == 2 && calculateHandScore(playerState.hand) == 21;
         // Player with natural can't hit or stand
         // TODO: player with natural can still have insurance
         if (playerHasNatural) {
-            game.currentPlayerIndex++;
-            emit CurrentPlayerIndexChanged(game.roomId, game.currentPlayerIndex);
-            if (nextPlayerMove(game, isGameStart))
+            emit CurrentPlayerIndexChanged(self.roomId, self.currentPlayerIndex, self.players[self.currentPlayerIndex]);
+            self.currentPlayerIndex++;
+            if (nextPlayerMove(self, isGameStart))
                 return;
         }
 
         if (!isGameStart) {
-            game.currentPlayerIndex++;
+            self.currentPlayerIndex++;
         }
-        if (game.currentPlayerIndex == game.players.length) {
+        if (self.currentPlayerIndex == self.players.length) {
             emit Log("last player");
-            setGameStage(game, GameStage.DealerTurn);
-            dealerTurn(game);
+            setGameStage(self, GameStage.DealerTurn);
+            dealerTurn(self);
             
             return true;
         }
-        emit CurrentPlayerIndexChanged(game.roomId, game.currentPlayerIndex);
+        emit CurrentPlayerIndexChanged(self.roomId, self.currentPlayerIndex, self.players[self.currentPlayerIndex]);
 
         return false;
     }
     
-    function setGameStage(GameState storage game, GameStage stage) internal {
-        game.stage = stage;
-        emit GameStageChanged(game.roomId, stage);
+    function setGameStage(GameState storage self, GameStage stage) internal {
+        self.lastUpdateTime = now;
+        self.stage = stage;
+        emit GameStageChanged(self.roomId, uint(stage));
     }
     
-    function dealerTurn(GameState storage game) internal {
-        PlayerState storage dealerState = game.playerStates[game.dealer];
+    function dealerTurn(GameState storage self) internal {
+        PlayerState storage dealerState = self.playerStates[self.dealer];
         bool flag = true;
         while (flag) {
             uint dealerScore = calculateHandScore(dealerState.hand);
             if (dealerScore < 17) {
-                dealCard(game, game.dealer);
+                dealCard(self, self.dealer);
             } else {
                 flag = false;
             }
         }
         
-        gameEnd(game);
+        gameEnd(self);
     }
     
-    function gameEnd(GameState storage game) internal {
-        setGameStage(game, GameStage.Ended);
+    function gameEnd(GameState storage self) internal {
+        setGameStage(self, GameStage.Ended);
 
-        PlayerState storage dealerState = game.playerStates[game.dealer];
+        PlayerState storage dealerState = self.playerStates[self.dealer];
         uint dealerScore = calculateHandScore(dealerState.hand);
         bool dealerHasNatural = dealerState.hand.length == 2 && dealerScore == 21;
         // FIXME: natural blackjack beats hand with 21
-        // TODO: The delaler will not play out his hand if there are no players in the game. 
+        // TODO: The delaler will not play out his hand if there are no players in the self. 
         // And if a player busts, and the dealer then plays out his hand (because there is still at least one 
-        // active player still in the game) and he subsequently busts,
+        // active player still in the self) and he subsequently busts,
         // the player still loses because the player busted first.
-        for(i = 0; i < game.players.length; i++) {
-            PlayerState storage playerState = game.playerStates[game.players[i]];
+        for(i = 0; i < self.players.length; i++) {
+            PlayerState storage playerState = self.playerStates[self.players[i]];
             uint playerScore = calculateHandScore(playerState.hand);
             bool playerHasNatural = playerState.hand.length == 2 && playerScore == 21;
             // If any player has a natural and the dealer does not, the dealer immediately pays that player one and a half times the amount of his bet. If the dealer has a natural, he immediately collects the bets of all players who do not have naturals, (but no additional amount). If the dealer and another player both have naturals, the bet of that player is a stand-off (a tie), and the player takes back his chips.
@@ -210,16 +236,13 @@ library GameLibrary {
             }
         }
 
-        game.balanceController.payout(game.roomId, game.dealer);
-        for(uint i = 0; i < game.players.length; i++) {
-            playerState = game.playerStates[game.players[i]];
-            
-            game.balanceController.payout(game.roomId, game.players[i]);
-            // FIXME
-            //balances[game.players[i]].balance += int(playerState.winnings);
+        self.balanceController.payout(self.roomId, self.dealer);
+        for(uint i = 0; i < self.players.length; i++) {
+            playerState = self.playerStates[self.players[i]];
+            self.balanceController.payout(self.roomId, self.players[i]);
         }
         
-        emit Log("game end");
+        emit Log("self end");
     }
     
     function getCardScore(DeckLibrary.CardValue _card) internal pure returns (uint, uint) {
@@ -258,15 +281,15 @@ library GameLibrary {
         return score;
     }
     
-    function dealCard(GameState storage game, address player) internal {
-        uint8 card = drawCard(game);
-        game.playerStates[player].hand.push(card);
+    function dealCard(GameState storage self, address player) internal {
+        uint8 card = drawCard(self);
+        self.playerStates[player].hand.push(card);
     }
 
-    function drawCard(GameState storage game) internal returns (uint8) {
-        uint8 card = uint8(game.randomProvider.random(game.usedCards.length) % 52);
+    function drawCard(GameState storage self) internal returns (uint8) {
+        uint8 card = uint8(self.randomProvider.random(self.usedCards.length) % 52);
         // TODO: handle case when all cards of this value are already used
-        game.usedCards.push(card);
+        self.usedCards.push(card);
         return card;
     }
 }

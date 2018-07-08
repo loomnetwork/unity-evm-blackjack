@@ -390,7 +390,8 @@ namespace Loom.Unity3d
 
             // First topic is the signature of event itself
             string eventName;
-            this.topicToEventName.TryGetValue(e.Topics[0], out eventName);
+            if (!this.topicToEventName.TryGetValue(e.Topics[0], out eventName))
+                throw new Exception("Unknown topic " + e.Topics[0]);
 
             return new EvmChainEventArgs(
                 e.ContractAddress,

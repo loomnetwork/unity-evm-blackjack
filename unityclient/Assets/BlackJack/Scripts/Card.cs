@@ -7,18 +7,32 @@ namespace Loom.BlackJack
 {
     public struct Card
     {
-        private readonly byte _index;
+        private readonly byte index;
 
-        public byte Index => this._index;
-        public CardValue CardValue => (CardValue) (this._index % 13);
-        public CardSuit CardSuit => (CardSuit) (this._index / 13);
+        public byte Index => this.index;
+        public CardValue CardValue => (CardValue) (this.index % 13);
+        public CardSuit CardSuit => (CardSuit) (this.index / 13);
+
+        public int CardScore
+        {
+            get
+            {
+                if (CardValue == CardValue.Ace)
+                    return 11;
+
+                if (CardValue < CardValue.Ace && CardValue >= CardValue.Ten)
+                    return 10;
+
+                return (int) CardValue + 2;
+            }
+        }
 
         public Card(byte index)
         {
             if (index >= 52)
                 throw new ArgumentException("expected index < 52");
 
-            this._index = index;
+            this.index = index;
         }
     }
 

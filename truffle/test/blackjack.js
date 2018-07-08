@@ -66,6 +66,10 @@ contract("TestingBlackJack", function(accounts) {
     let state = {
     }
 
+    function throwError() {
+        //throw Error();
+    }
+
     async function updateSingleState(roomId, x, address) {
         state[x] = await contract.getGameStatePlayer(roomId, address);
         state[x][0] = state[x][0].map(x => x.toNumber());
@@ -149,6 +153,8 @@ contract("TestingBlackJack", function(accounts) {
 
         assert.equal(state.dealer.balance, -100);
         assert.equal(state.player1.balance, 100);
+
+        throwError();
     });
 
     it("1 player - dealer wins", async function() {
@@ -166,6 +172,8 @@ contract("TestingBlackJack", function(accounts) {
 
         assert.equal(state.dealer.balance, 100);
         assert.equal(state.player1.balance, -100);
+
+        throwError();
     });
 
     it("1 player - tie", async function() {
@@ -182,6 +190,8 @@ contract("TestingBlackJack", function(accounts) {
 
         assert.equal(state.dealer.balance, 0);
         assert.equal(state.player1.balance, 0);
+
+        throwError();
     });
 
     it("1 player - player busts", async function() {
@@ -198,6 +208,8 @@ contract("TestingBlackJack", function(accounts) {
 
         assert.equal(state.dealer.balance, 100);
         assert.equal(state.player1.balance, -100);
+
+        throwError();
     });
 
     it("1 player - dealer busts", async function() {
@@ -214,6 +226,8 @@ contract("TestingBlackJack", function(accounts) {
 
         assert.equal(state.dealer.balance, -100);
         assert.equal(state.player1.balance, 100);
+
+        throwError();
     });
 
     it("1 player - player has natural", async function() {
@@ -224,6 +238,8 @@ contract("TestingBlackJack", function(accounts) {
 
         assert.equal(state.dealer.balance, -150);
         assert.equal(state.player1.balance, 150);
+        
+        throwError();
     });
 
     it("1 player - dealer has natural", async function() {
@@ -237,6 +253,8 @@ contract("TestingBlackJack", function(accounts) {
 
         assert.equal(state.dealer.balance, 100);
         assert.equal(state.player1.balance, -100);
+
+        throwError();
     });
 
     it("1 player - dealer and player have natural", async function() {
@@ -247,6 +265,8 @@ contract("TestingBlackJack", function(accounts) {
 
         assert.equal(state.dealer.balance, 0);
         assert.equal(state.player1.balance, 0);
+
+        throwError();
     });
 
     it("1 player - dealer has blackjack, player has 21", async function() {
@@ -269,6 +289,8 @@ contract("TestingBlackJack", function(accounts) {
 
         assert.equal(state.dealer.balance, 100);
         assert.equal(state.player1.balance, -100);
+
+        throwError();
     });
 
     it("2 player - player1 wins, player2 loses", async function() {
@@ -300,6 +322,8 @@ contract("TestingBlackJack", function(accounts) {
         assert.equal(state.dealer.balance, -100 + 500);
         assert.equal(state.player1.balance, 100); 
         assert.equal(state.player2.balance, -500);
+
+        throwError();
     });
 
     it("2 player - player1 busts, player2 wins", async function() {
@@ -332,6 +356,8 @@ contract("TestingBlackJack", function(accounts) {
         assert.equal(state.dealer.balance, 100 - 500);
         assert.equal(state.player1.balance, -100); 
         assert.equal(state.player2.balance, 500);
+
+        throwError();
     });
 
     it("2 player - dealer busts, player1 busts, player2 wins", async function() {
@@ -364,6 +390,14 @@ contract("TestingBlackJack", function(accounts) {
         assert.equal(state.dealer.balance, 100 - 500);
         assert.equal(state.player1.balance, -100); 
         assert.equal(state.player2.balance, 500);
+
+        throwError();
+    });
+
+    it("event test", async function() {
+        await contract.sendTestEvents(0);
+
+        //throw Error();
     });
 
             /*         

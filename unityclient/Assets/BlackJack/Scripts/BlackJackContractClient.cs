@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
 using Loom.Nethereum.ABI.FunctionEncoding.Attributes;
 using Loom.Unity3d;
-using Org.BouncyCastle.Math;
 using UnityEngine;
 
 namespace Loom.BlackJack
@@ -19,15 +19,25 @@ namespace Loom.BlackJack
         private readonly ILogger logger;
         private readonly byte[] privateKey;
         private readonly byte[] publicKey;
+        private readonly GameObject gameObject;
+        private readonly RoomObject roomObject;
+
         private DAppChainClient client;
         private EvmContract contract;
         private IRpcClient reader;
         private IRpcClient writer;
 
-        private GameObject gameObject;
-        private RoomObject roomObject;
+        public delegate void RoomCreatedEventHandler(Address creator, BigInteger roomId);
+        public delegate void PlayerJoinedEventHandler(BigInteger roomId,  Address player);
+        public delegate void GameStageChangedEventHandler(BigInteger roomId, GameStage stage);
+        public delegate void CurrentPlayerIndexChangedEventHandler(BigInteger roomId, int playerIndex, Address player);
+        public delegate void PlayerDecisionReceivedEventHandler(BigInteger roomId, int playerIndex, Address player, PlayerDecision playerDecision);
 
-        public event Action RoomCreated;
+        public event RoomCreatedEventHandler RoomCreated;
+        public event PlayerJoinedEventHandler PlayerJoined;
+        public event GameStageChangedEventHandler GameStageChanged;
+        public event CurrentPlayerIndexChangedEventHandler CurrentPlayerIndexChanged;
+        public event PlayerDecisionReceivedEventHandler PlayerDecisionReceived;
 
         public BlackJackContractClient(string abi, byte[] privateKey, byte[] publicKey, ILogger logger)
         {
@@ -36,57 +46,58 @@ namespace Loom.BlackJack
             this.publicKey = publicKey;
             this.logger = logger;
 
-            gameObject = new GameObject(this);
-            roomObject = new RoomObject(this);
+            this.gameObject = new GameObject(this);
+            this.roomObject = new RoomObject(this);
         }
 
-        public bool IsConnected => reader.IsConnected;
-        public GameObject Game => gameObject;
-        public RoomObject Room => roomObject;
+        public bool IsConnected => this.reader.IsConnected;
+        public GameObject Game => this.gameObject;
+        public RoomObject Room => this.roomObject;
+        public Address Address => this.contract.Caller;
 
         public async Task ConnectToContract()
         {
-            if (contract == null)
+            if (this.contract == null)
             {
-                contract = await GetContract();
+                this.contract = await GetContract();
             }
         }
 
         public void Update()
         {
-            while (eventActions.Count > 0)
+            while (this.eventActions.Count > 0)
             {
-                Action action = eventActions.Dequeue();
+                Action action = this.eventActions.Dequeue();
                 action();
             }
         }
 
         private async Task<EvmContract> GetContract()
         {
-            writer = RpcClientFactory.Configure()
-                .WithLogger(Debug.unityLogger)
+            this.writer = RpcClientFactory.Configure()
+                .WithLogger(this.logger)
                 .WithWebSocket("ws://127.0.0.1:46657/websocket")
                 .Create();
 
-            reader = RpcClientFactory.Configure()
-                .WithLogger(Debug.unityLogger)
+            this.reader = RpcClientFactory.Configure()
+                .WithLogger(this.logger)
                 .WithWebSocket("ws://127.0.0.1:9999/queryws")
                 .Create();
 
-            client = new DAppChainClient(writer, reader)
-                { Logger = logger };
+            this.client = new DAppChainClient(this.writer, this.reader)
+                { Logger = this.logger };
 
             // required middleware
-            client.TxMiddleware = new TxMiddleware(new ITxMiddlewareHandler[]
+            this.client.TxMiddleware = new TxMiddleware(new ITxMiddlewareHandler[]
             {
-                new NonceTxMiddleware(publicKey, client),
-                new SignedTxMiddleware(privateKey)
+                new NonceTxMiddleware(this.publicKey, this.client),
+                new SignedTxMiddleware(this.privateKey)
             });
 
-            Address contractAddr = await client.ResolveContractAddressAsync("BlackJack");
+            Address contractAddr = await this.client.ResolveContractAddressAsync("BlackJack");
 
-            Address callerAddr = Address.FromPublicKey(publicKey);
-            EvmContract evmContract = new EvmContract(client, contractAddr, callerAddr, abi);
+            Address callerAddr = Address.FromPublicKey(this.publicKey);
+            EvmContract evmContract = new EvmContract(this.client, contractAddr, callerAddr, this.abi);
 
             evmContract.EventReceived += EventReceivedHandler;
             return evmContract;
@@ -94,10 +105,118 @@ namespace Loom.BlackJack
 
         private void EventReceivedHandler(object sender, EvmChainEventArgs e)
         {
-            Debug.Log("Event: " + e.EventName);
-            if (e.EventName == "RoomCreated")
+            //Debug.Log("Event: " + e.EventName);
+            switch (e.EventName)
             {
-                eventActions.Enqueue(() => RoomCreated?.Invoke());
+                case "RoomCreated":
+                {
+                    RoomCreatedEventData eventDto = e.DecodeEventDto<RoomCreatedEventData>();
+                    this.eventActions.Enqueue(() => RoomCreated?.Invoke((Address) eventDto.Creator, eventDto.RoomId));
+                    break;
+                }
+                case "PlayerJoined":
+                {
+                    PlayerJoinedEventData eventDto = e.DecodeEventDto<PlayerJoinedEventData>();
+                    this.eventActions.Enqueue(() => PlayerJoined?.Invoke(eventDto.RoomId, (Address) eventDto.Player));
+                    break;
+                }
+                case "GameStageChanged":
+                {
+                    GameStageChangedEventData eventDto = e.DecodeEventDto<GameStageChangedEventData>();
+                    this.eventActions.Enqueue(() => GameStageChanged?.Invoke(eventDto.RoomId, eventDto.Stage));
+                    break;
+                }
+                case "CurrentPlayerIndexChanged":
+                {
+                    CurrentPlayerIndexChangedEventData eventDto = e.DecodeEventDto<CurrentPlayerIndexChangedEventData>();
+                    this.eventActions.Enqueue(() => CurrentPlayerIndexChanged?.Invoke(eventDto.RoomId, eventDto.PlayerIndex, (Address) eventDto.PlayerAddress));
+                    break;
+                }
+                case "PlayerDecisionReceived":
+                {
+                    PlayerDecisionReceivedEventData eventDto = e.DecodeEventDto<PlayerDecisionReceivedEventData>();
+                    this.eventActions.Enqueue(() => PlayerDecisionReceived?.Invoke(eventDto.RoomId, eventDto.PlayerIndex, (Address) eventDto.PlayerAddress, eventDto.PlayerDecision));
+                    break;
+                }
+            }
+        }
+
+        public abstract class LogicObject
+        {
+            protected readonly BlackJackContractClient Client;
+
+            protected LogicObject(BlackJackContractClient client)
+            {
+                this.Client = client;
+            }
+        }
+
+        public class GameObject : LogicObject
+        {
+            public GameObject(BlackJackContractClient client) : base(client)
+            {
+            }
+
+            public async Task PlaceBet(BigInteger roomId, BigInteger bet)
+            {
+                await this.Client.ConnectToContract();
+                await this.Client.contract.CallAsync("placeBet", roomId, bet);
+            }
+
+            public async Task PlayerDecision(BigInteger roomId, PlayerDecision decision)
+            {
+                await this.Client.ConnectToContract();
+                await this.Client.contract.CallAsync("playerDecision", roomId, (int) decision);
+            }
+
+            public async Task<GetGameStateOutput> GetGameState(BigInteger roomId)
+            {
+                await this.Client.ConnectToContract();
+                return await this.Client.contract.StaticCallDtoTypeOutputAsync<GetGameStateOutput>("getGameState", roomId);
+            }
+
+            public async Task<GetGameStatePlayerOutput> GetGameStatePlayer(BigInteger roomId, string playerAddress)
+            {
+                await this.Client.ConnectToContract();
+                return await this.Client.contract.StaticCallDtoTypeOutputAsync<GetGameStatePlayerOutput>("getGameStatePlayer", roomId, playerAddress);
+            }
+        }
+
+        public class RoomObject : LogicObject
+        {
+            public RoomObject(BlackJackContractClient client) : base(client)
+            {
+            }
+
+            public async Task CreateRoom(string roomName)
+            {
+                await this.Client.ConnectToContract();
+                byte[] roomNameBytes = Encoding.UTF8.GetBytes(roomName);
+                await this.Client.contract.CallAsync("createRoom", roomNameBytes);
+            }
+
+            public async Task JoinRoom(BigInteger roomId)
+            {
+                await this.Client.ConnectToContract();
+                await this.Client.contract.CallAsync("joinRoom", roomId);
+            }
+
+            public async Task LeaveRoom(BigInteger roomId)
+            {
+                await this.Client.ConnectToContract();
+                await this.Client.contract.CallAsync("leaveRoom", roomId);
+            }
+
+            public async Task StartGame(BigInteger roomId)
+            {
+                await this.Client.ConnectToContract();
+                await this.Client.contract.CallAsync("startGame", roomId);
+            }
+
+            public async Task<GetRoomsOutput> GetRooms()
+            {
+                await this.Client.ConnectToContract();
+                return await this.Client.contract.StaticCallDtoTypeOutputAsync<GetRoomsOutput>("getRooms");
             }
         }
 
@@ -112,74 +231,89 @@ namespace Loom.BlackJack
         }
 
         [FunctionOutput]
+        public class GetGameStateOutput
+        {
+            [Parameter("uint")]
+            public GameStage Stage { get; set; }
+
+            [Parameter("uint8[]")]
+            public List<byte> UsedCards { get; set; }
+
+            [Parameter("address[]")]
+            public List<string> Players { get; set; }
+
+            [Parameter("uint")]
+            public int PlayerIndex { get; set; }
+
+            [Parameter("uint8[]")]
+            public List<byte> DealerHand { get; set; }
+        }
+
+        [FunctionOutput]
         public class GetGameStatePlayerOutput
         {
-            [Parameter("uint256[]")]
-            public byte[] RoomIds { get; set; }
+            [Parameter("uint8[]")]
+            public List<byte> Hand { get; set; }
 
-            [Parameter("bytes32[]")]
-            public byte[][] RoomNames { get; set; }
+            [Parameter("uint")]
+            public BigInteger Bet { get; set; }
+
+            [Parameter("uint")]
+            public BigInteger Winnings { get; set; }
         }
 
-        public abstract class LogicObject
+        public class RoomCreatedEventData
         {
-            protected readonly BlackJackContractClient Client;
+            [Parameter("address")]
+            public string Creator { get; set; }
 
-            protected LogicObject(BlackJackContractClient client)
-            {
-                Client = client;
-            }
+            [Parameter("uint")]
+            public BigInteger RoomId { get; set; }
         }
 
-        public class GameObject : LogicObject
+        public class PlayerJoinedEventData
         {
-            public GameObject(BlackJackContractClient client) : base(client)
-            {
-            }
+            [Parameter("uint")]
+            public BigInteger RoomId { get; set; }
 
-            public async Task PlayerDecision(BigInteger roomId, PlayerDecision decision)
-            {
-                await Client.ConnectToContract();
-                await Client.contract.CallAsync("playerDecision", roomId, (int) decision);
-            }
-
-            public async Task<GetGameStatePlayerOutput> GetGameStatePlayer(BigInteger roomId, string playerAddress)
-            {
-                await Client.ConnectToContract();
-                return await Client.contract.StaticCallDtoTypeOutputAsync<GetGameStatePlayerOutput>("getGameStatePlayer", roomId, playerAddress);
-            }
+            [Parameter("address")]
+            public string Player { get; set; }
         }
 
-        public class RoomObject : LogicObject
+        public class GameStageChangedEventData
         {
-            public RoomObject(BlackJackContractClient client) : base(client)
-            {
-            }
+            [Parameter("uint")]
+            public BigInteger RoomId { get; set; }
 
-            public async Task CreateRoom(string roomName)
-            {
-                await Client.ConnectToContract();
-                byte[] roomNameBytes = Encoding.UTF8.GetBytes(roomName);
-                await Client.contract.CallAsync("createRoom", roomNameBytes);
-            }
+            [Parameter("uint")]
+            public GameStage Stage { get; set; }
+        }
 
-            public async Task JoinRoom(BigInteger roomId)
-            {
-                await Client.ConnectToContract();
-                await Client.contract.CallAsync("joinRoom", roomId);
-            }
+        public class CurrentPlayerIndexChangedEventData
+        {
+            [Parameter("uint")]
+            public BigInteger RoomId { get; set; }
 
-            public async Task StartGame(BigInteger roomId)
-            {
-                await Client.ConnectToContract();
-                await Client.contract.CallAsync("startGame", roomId);
-            }
+            [Parameter("uint")]
+            public int PlayerIndex{ get; set; }
 
-            public async Task<GetRoomsOutput> GetRooms()
-            {
-                await Client.ConnectToContract();
-                return await Client.contract.StaticCallDtoTypeOutputAsync<GetRoomsOutput>("getRooms");
-            }
+            [Parameter("address")]
+            public string PlayerAddress { get; set; }
+        }
+
+        public class PlayerDecisionReceivedEventData
+        {
+            [Parameter("uint")]
+            public BigInteger RoomId { get; set; }
+
+            [Parameter("uint")]
+            public int PlayerIndex { get; set; }
+
+            [Parameter("address")]
+            public string PlayerAddress { get; set; }
+
+            [Parameter("uint")]
+            public PlayerDecision PlayerDecision { get; set; }
         }
     }
 }

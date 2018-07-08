@@ -32,8 +32,10 @@ contract BlackJack is RandomProvider, BalanceController, GameRooms, Owned, Morta
     uint nonce;
     
     event RoomCreated(address creator, uint roomId);
-    event GameStageChanged(uint roomId, GameLibrary.GameStage stage);
-    event CurrentPlayerIndexChanged(uint roomId, uint playerIndex);
+    event PlayerJoined(uint roomId, address player);
+    event GameStageChanged(uint roomId, uint stage);
+    event CurrentPlayerIndexChanged(uint roomId, uint playerIndex, address player);
+    event PlayerDecisionReceived(uint roomId, uint playerIndex, address playerAddres, uint playerDecision);
     event Log(string message);
     
     struct PlayerBalance {
@@ -60,6 +62,8 @@ contract BlackJack is RandomProvider, BalanceController, GameRooms, Owned, Morta
     }
     
     function createRoom(bytes32 _name) public {
+        clearInactiveRooms();
+        
         balances[msg.sender].exists = true;
         
         uint roomIndex = rooms.length++;
@@ -68,14 +72,14 @@ contract BlackJack is RandomProvider, BalanceController, GameRooms, Owned, Morta
         room.name = _name;
         room.state = RoomState.WaitingForPlayers;
         room.creator = msg.sender;
+        
+        emit RoomCreated(msg.sender, room.id);
 
         GameLibrary.GameState storage game = games[room.id];
         game.init(room.id, this, this);
         nonce++;
-        
-        emit RoomCreated(msg.sender, room.id);
     }
-    
+
     function getBalance(address _player) public view returns (int) {
         PlayerBalance storage balance = balances[_player];
         if (!balance.exists)
@@ -85,19 +89,33 @@ contract BlackJack is RandomProvider, BalanceController, GameRooms, Owned, Morta
     }
 
     function placeBet(uint _roomId, uint bet) public {
+        if (bet == 0)
+            revert("bet must be > 0");
+            
         GameLibrary.GameState storage game = games[_roomId];
-        // TODO: check if player has enough balance to bet
+        // TODO: check if player has enough balance to bet?
+        GameLibrary.PlayerState storage playerState = game.playerStates[msg.sender];
+        if (playerState.bet != 0)
+            revert("already betted");
+            
         game.playerStates[msg.sender].bet = bet;
         balances[msg.sender].exists = true;
         balances[msg.sender].balance -= int(bet);
     }
     
     function startGame(uint _roomId) public {
-        Room storage room = rooms[_getRoomIndexByRoomId(_roomId)];
+        uint roomIndex = _getRoomIndexByRoomId(_roomId);
+        Room storage room = rooms[roomIndex];
+        if (room.creator != msg.sender)
+            revert("only room creator can start game");
+            
         room.state = RoomState.Started;
         
         GameLibrary.GameState storage game = games[_roomId];
         game.startGame(room.creator, room.players);
+        
+        // Started games are not discoverable
+        deleteRoom(roomIndex);
     }
     
     function playerDecision(uint _roomId, GameLibrary.PlayerDecision _decision) public {
@@ -124,6 +142,27 @@ contract BlackJack is RandomProvider, BalanceController, GameRooms, Owned, Morta
         
         room.players.push(msg.sender);
     }
+    
+    function leaveRoom(uint _roomId) public {
+        (bool found, uint roomIndex) = _getRoomIndexByRoomIdSafe(_roomId);
+        if (!found)
+            return;
+            
+        Room storage room = rooms[roomIndex];
+        GameLibrary.GameState storage game = games[_roomId];
+        bool isInGame = game.dealer == msg.sender;
+        for(uint i = 0; i < game.players.length; i++) {
+            if (room.players[i] == msg.sender) {
+                isInGame = true;
+            }
+        }
+        
+        if (!isInGame)
+            revert("not in room, can't leave");
+        
+        // Stop the game if any player leaves
+        deleteGameAndRoom(game, roomIndex);
+    }
         
     function getRoomPlayers(uint _roomId) public view returns (address[]) {
         return rooms[_getRoomIndexByRoomId(_roomId)].players;
@@ -141,13 +180,68 @@ contract BlackJack is RandomProvider, BalanceController, GameRooms, Owned, Morta
         
         return (ids, names);
     }
+    
+    function deleteGameAndRoom(GameLibrary.GameState storage game, uint roomIndex) private {
+        uint roomId = game.roomId;
+        game.destroy();
+        delete games[roomId];
+        deleteRoom(roomIndex);
+    }
+    
+    function deleteRoom(uint roomIndex) private {
+        delete rooms[roomIndex];
+        
+        while (roomIndex < rooms.length - 1) {
+            rooms[roomIndex] = rooms[roomIndex + 1];
+            roomIndex++;
+        }
+        rooms.length--;
+    }
+    
+    function clearInactiveRooms() private {
+        for (uint i = rooms.length; i-- > 0; ) {
+            Room storage room = rooms[i];
+            GameLibrary.GameState storage game = games[room.id];
 
-    function _getRoomIndexByRoomId(uint _roomId) private view returns (uint) {
+            if (now - game.lastUpdateTime > 10 minutes) {
+                deleteGameAndRoom(game, i);
+            }
+        }
+    }
+
+    function _getRoomIndexByRoomIdSafe(uint _roomId) private view returns (bool, uint) {
         for (uint i = 0; i < rooms.length; i++) {
             if (rooms[i].id == _roomId)
-                return i;
+                return (true, i);
         }
         
-        revert("Unknown room id ");
+        return (false, 0);
+    }
+
+    function _getRoomIndexByRoomId(uint _roomId) private view returns (uint) {
+        (bool found, uint roomIndex) = _getRoomIndexByRoomIdSafe(_roomId);
+        if (!found)
+            revert("Unknown room id ");
+            
+        return roomIndex;
+    }
+
+    event TestEvent(uint number);
+
+    function sendTestEvents(uint base) public {
+        emit TestEvent(base + 1);
+        emit TestEvent(base + 2);
+        emit TestEvent(base + 3);
+        emit TestEvent(base + 4);
+        emit TestEvent(base + 5);
+        emit TestEvent(base + 6);
+        emit TestEvent(base + 7);
+        emit TestEvent(base + 8);
+        emit TestEvent(base + 9);
+        emit TestEvent(base + 10);
+        emit TestEvent(base + 12);
+        emit TestEvent(base + 13);
+        emit TestEvent(base + 14);
+        emit TestEvent(base + 15);
     }
 }
