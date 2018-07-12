@@ -2,7 +2,7 @@
 
 namespace Loom.Blackjack
 {
-    public class BlackjackRules
+    public static class BlackjackRules
     {
         public static void CalculateHandScore(IList<Card> hand, out int softScore, out int hardScore)
         {

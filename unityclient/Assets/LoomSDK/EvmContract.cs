@@ -391,7 +391,7 @@ namespace Loom.Unity3d
             // First topic is the signature of event itself
             string eventName;
             if (!this.topicToEventName.TryGetValue(e.Topics[0], out eventName))
-                throw new Exception("Unknown topic " + e.Topics[0]);
+                throw new EvmException($"Unknown topic {e.Topics[0]}, is the ABI out of sync with the contract?");
 
             return new EvmChainEventArgs(
                 e.ContractAddress,
@@ -471,6 +471,5 @@ namespace Loom.Unity3d
         }
 
         #endregion
-
     }
 }

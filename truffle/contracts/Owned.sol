@@ -8,6 +8,6 @@ contract Owned {
     }
     
     modifier onlyOwner() {
-        if(msg.sender == owner) _;
+        if (msg.sender == owner) _;
     }
 }

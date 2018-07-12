@@ -1,10 +1,11 @@
 ﻿namespace Loom.Blackjack
 {
     public enum GameStage {
-        Betting,
+        WaitingForPlayersAndBetting,
         Started,
         PlayersTurn,
         DealerTurn,
-        Ended
+        Ended,
+        Destroyed
     }
 }

@@ -6,7 +6,7 @@ contract CircuitBreaker is Owned {
     bool stopped;
     
     constructor() public {
-     stopped = false;
+        stopped = false;
     }
     
     function toggleActive() onlyOwner public {

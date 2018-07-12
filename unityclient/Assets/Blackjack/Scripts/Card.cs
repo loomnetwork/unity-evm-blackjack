@@ -1,7 +1,4 @@
 ﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
 
 namespace Loom.Blackjack
 {
@@ -17,13 +14,13 @@ namespace Loom.Blackjack
         {
             get
             {
+                if (CardValue < CardValue.Ten)
+                    return (int) CardValue + 2;
+
                 if (CardValue == CardValue.Ace)
                     return 11;
 
-                if (CardValue < CardValue.Ace && CardValue >= CardValue.Ten)
-                    return 10;
-
-                return (int) CardValue + 2;
+                return 10;
             }
         }
 

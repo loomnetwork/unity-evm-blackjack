@@ -16,18 +16,8 @@ contract TestBlackjack {
         Assert.equal(int(DeckLibrary.getCardSuit(14)), int(DeckLibrary.CardSuit.Diamonds), "");
         Assert.equal(int(DeckLibrary.getCardSuit(51)), int(DeckLibrary.CardSuit.Spades), "");
 
-        uint soft;
-        uint hard;
-        (soft, hard) = GameLibrary.getCardScore(DeckLibrary.CardValue.Seven);
-        Assert.equal(soft, 7, "");
-        Assert.equal(hard, 7, "");
-
-        (soft, hard) = GameLibrary.getCardScore(DeckLibrary.CardValue.Queen);
-        Assert.equal(soft, 10, "");
-        Assert.equal(hard, 10, "");
-
-        (soft, hard) = GameLibrary.getCardScore(DeckLibrary.CardValue.Ace);
-        Assert.equal(soft, 1, "");
-        Assert.equal(hard, 11, "");
+        Assert.equal(GameLibrary.getCardScore(DeckLibrary.CardValue.Seven), 7, "");
+        Assert.equal(GameLibrary.getCardScore(DeckLibrary.CardValue.Queen), 10, "");
+        Assert.equal(GameLibrary.getCardScore(DeckLibrary.CardValue.Ace), 11, "");
     }
 }
