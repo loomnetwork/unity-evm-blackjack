@@ -13,10 +13,11 @@ namespace Loom.Blackjack
     {
         public const int kMaxPlayers = 3;
         public const int kMinBet = 5;
-        public const int kMaxBet = 100;
+        public const int kMaxBet = 1000;
 
         public event Action RoomListChanged;
         public event Action StateChanged;
+        public event Action<Address> PlayerLeft;
         public string BackendHost = "127.0.0.1";
         public TextAsset ContractAbi;
 
@@ -28,6 +29,16 @@ namespace Loom.Blackjack
         public GameState GameState => this.gameState;
         public List<Room> Rooms => this.rooms;
 
+        public void ResetState()
+        {
+            this.gameState = new GameState();
+        }
+
+        public async Task<BigInteger> GetBalance()
+        {
+            return await this.client.Common.GetBalance(this.client.Address);
+        }
+
         public async Task UpdateRoomList()
         {
             await this.client.ConnectToContract();
@@ -37,10 +48,10 @@ namespace Loom.Blackjack
             {
                 byte[] roomNameBytes = getRoomsOutput.RoomNames[i];
                 string roomName = Encoding.UTF8.GetString(roomNameBytes);
-                BigInteger roomId = getRoomsOutput.RoomIds[i];
                 this.rooms.Add(new Room
                 {
-                    Id = roomId,
+                    Id = getRoomsOutput.RoomIds[i],
+                    Creator = (Address) getRoomsOutput.Creators[i],
                     Name = roomName
                 });
             }
@@ -50,6 +61,12 @@ namespace Loom.Blackjack
 
         public async Task UpdateGameState()
         {
+            if (this.gameState.Stage == GameStage.Destroyed)
+            {
+                this.StateChanged?.Invoke();
+                return;
+            }
+
             BlackjackContractClient.GetGameStateOutput updatedGameState = await this.client.Game.GetGameState(this.gameState.RoomId);
             if (this.gameState.Players == null || this.gameState.Players.Length != updatedGameState.Players.Count)
             {
@@ -80,8 +97,23 @@ namespace Loom.Blackjack
 
         private async void Start()
         {
-            byte[] privateKey = CryptoUtils.GeneratePrivateKey();
-            byte[] publicKey = CryptoUtils.PublicKeyFromPrivateKey(privateKey);
+            // Load private & public key from storage, if possible
+            const string privateKeyKey = "blackjack_privateKey";
+            const string publicKeyKey = "blackjack_publicKey";
+            byte[] privateKey;
+            byte[] publicKey;
+            if (PlayerPrefs.HasKey(privateKeyKey) && PlayerPrefs.HasKey(publicKeyKey))
+            {
+                privateKey = CryptoUtils.HexStringToBytes(PlayerPrefs.GetString(privateKeyKey));
+                publicKey = CryptoUtils.HexStringToBytes(PlayerPrefs.GetString(publicKeyKey));
+            } else
+            {
+                privateKey = CryptoUtils.GeneratePrivateKey();
+                publicKey = CryptoUtils.PublicKeyFromPrivateKey(privateKey);
+                PlayerPrefs.SetString(privateKeyKey, CryptoUtils.BytesToHexString(privateKey));
+                PlayerPrefs.SetString(publicKeyKey, CryptoUtils.BytesToHexString(publicKey));
+            }
+
             this.client = new BlackjackContractClient(this.BackendHost, this.ContractAbi.text, privateKey, publicKey, NullLogger.Instance);
             this.client.RoomCreated += ClientOnRoomCreated;
             this.client.PlayerJoined += ClientOnPlayerJoined;
@@ -113,6 +145,9 @@ namespace Loom.Blackjack
         {
             this.client.Update();
         }
+
+
+        #region Event Handlers
 
         private async Task ClientOnRoomCreated(Address creator, BigInteger roomId)
         {
@@ -177,6 +212,11 @@ namespace Loom.Blackjack
             if (roomId != this.gameState.RoomId)
                 return;
 
+            Debug.Log("Player left " + player);
+            PlayerLeft?.Invoke(player);
+            if (this.client.Address == player)
+                return;
+
             await UpdateGameState();
         }
 
@@ -214,9 +254,6 @@ namespace Loom.Blackjack
 
         private async Task ClientOnGameStageChanged(BigInteger roomId, GameStage stage)
         {
-            if (stage == GameStage.Destroyed)
-                return;
-
             if (roomId != this.gameState.RoomId)
                 return;
 
@@ -224,5 +261,7 @@ namespace Loom.Blackjack
             this.gameState.Stage = stage;
             await UpdateGameState();
         }
+
+        #endregion
     }
 }

@@ -6,6 +6,9 @@ import "./ArrayLibrary.sol";
 import "./DeckLibrary.sol";
 
 library GameLibrary {
+    uint16 constant DECK_COUNT = 6;
+    uint16 constant TOTAL_CARD_COUNT = DECK_COUNT * 52;
+
     event RoomCreated(uint roomId, address creator);
     event PlayerBetted(uint order, uint roomId, address player, uint bet);
     event PlayerJoined(uint order, uint roomId, address player);
@@ -36,7 +39,7 @@ library GameLibrary {
 
     struct PlayerState {
         uint bet;
-        uint winning;
+        int winning;
         int outcome;
         uint8[] hand;
         bool readyForNextRound;
@@ -80,8 +83,8 @@ library GameLibrary {
     }
 
     function removePlayer(GameState storage self, address player)
-        atStage(self, GameStage.WaitingForPlayersAndBetting)
         internal
+        atAnyOfStage(self, GameStage.WaitingForPlayersAndBetting, GameStage.Ended)
     {
         delete self.playerStates[player];
         ArrayLibrary.removeAddressFromArrayUnordered(self.players, player);
@@ -249,38 +252,39 @@ library GameLibrary {
             // If the dealer and another player both have naturals, the bet of that player is a stand-off (a tie), and the player takes back his chips.
             if (!dealerHasNatural && playerHasNatural) {
                 emit Log("player has natural");
-                playerState.winning += playerState.bet * 5 / 2;
-                dealerState.winning -= playerState.bet * 5 / 2 - playerState.bet;
+                playerState.winning += int(playerState.bet * 5 / 2);
+                dealerState.winning -= int(playerState.bet * 5 / 2 - playerState.bet);
             } else if (dealerHasNatural && !playerHasNatural) {
                 emit Log("dealer has natural");
-                dealerState.winning += playerState.bet;
+                dealerState.winning += int(playerState.bet);
             } else if (dealerHasNatural && playerHasNatural) {
                 emit Log("natural tie");
-                playerState.winning += playerState.bet;
+                playerState.winning += int(playerState.bet);
             } else {
                 if (playerScore > 21) {
                     emit Log("player busts");
-                    dealerState.winning += playerState.bet;
+                    dealerState.winning += int(playerState.bet);
                 } else if (dealerScore > 21) {
                     emit Log("dealer busts");
-                    playerState.winning += playerState.bet * 2;
-                    dealerState.winning -= playerState.bet;
+                    playerState.winning += int(playerState.bet * 2);
+                    dealerState.winning -= int(playerState.bet);
                 } else {
                     if (dealerScore > playerScore) {
                         emit Log("dealer wins");
-                        dealerState.winning += playerState.bet;
+                        dealerState.winning += int(playerState.bet);
                     } else if (dealerScore == playerScore) {
                         emit Log("tie");
-                        playerState.winning += playerState.bet;
+                        playerState.winning += int(playerState.bet);
                     } else {
                         emit Log("player wins");
-                        playerState.winning += playerState.bet * 2;
-                        dealerState.winning -= playerState.bet;
+                        playerState.winning += int(playerState.bet * 2);
+                        dealerState.winning -= int(playerState.bet);
                     }
                 }
             }
 
             calculateOutcome(self.playerStates[self.players[i]]);
+            playerState.bet = 0;
         }
 
         calculateOutcome(self.playerStates[self.dealer]);
@@ -369,6 +373,11 @@ library GameLibrary {
 
     modifier atStage(GameLibrary.GameState storage game, GameLibrary.GameStage stage) {
         require(game.stage == stage, "can't be called at this game stage");
+        _;
+    }
+
+    modifier atAnyOfStage(GameLibrary.GameState storage game, GameLibrary.GameStage stage1, GameLibrary.GameStage stage2) {
+        require(game.stage == stage1 || game.stage == stage2, "can't be called at this game stage");
         _;
     }
 

@@ -14,7 +14,7 @@ contract Blackjack is RandomProvider, BalanceController, RoomSupport, Owned, Cir
 
     uint16 constant MAX_PLAYERS = 4;
     uint constant MIN_BET = 5;
-    uint constant MAX_BET = 100;
+    uint constant MAX_BET = 1000;
     uint nonce;
 
     Room[] rooms;
@@ -47,7 +47,7 @@ contract Blackjack is RandomProvider, BalanceController, RoomSupport, Owned, Cir
     function payout(uint roomId, address player)
         public
         gameMustExist(roomId)
-        atAnyOfStage(games[roomId], GameLibrary.GameStage.Ended, GameLibrary.GameStage.WaitingForPlayersAndBetting)
+        atAnyOfStage(games[roomId], GameLibrary.GameStage.WaitingForPlayersAndBetting, GameLibrary.GameStage.Ended)
     {
         GameLibrary.GameState storage game = games[roomId];
         GameLibrary.PlayerState storage playerState = game.playerStates[player];
@@ -93,7 +93,7 @@ contract Blackjack is RandomProvider, BalanceController, RoomSupport, Owned, Cir
     function getBalance(address player)
         public
         view
-        balanceMustExist(player)
+        //balanceMustExist(player)
         returns (int)
     {
         PlayerBalance storage balance = balances[player];
@@ -107,8 +107,8 @@ contract Blackjack is RandomProvider, BalanceController, RoomSupport, Owned, Cir
         atStage(games[roomId], GameLibrary.GameStage.WaitingForPlayersAndBetting)
     {
         require(bet > 0, "bet must be > 0");
-        require(bet < MIN_BET, "bet too small");
-        require(bet > MAX_BET, "bet too big");
+        require(bet >= MIN_BET, "bet too small");
+        require(bet <= MAX_BET, "bet too big");
 
         GameLibrary.GameState storage game = games[roomId];
         // TODO: check if player has enough balance to bet?
@@ -161,7 +161,7 @@ contract Blackjack is RandomProvider, BalanceController, RoomSupport, Owned, Cir
         public
         view
         gameMustExist(roomId)
-        returns (uint8[], uint, uint, bool)
+        returns (uint8[], uint, int, bool)
     {
         GameLibrary.GameState storage game = games[roomId];
         GameLibrary.PlayerState storage playerState = game.playerStates[player];
@@ -173,7 +173,7 @@ contract Blackjack is RandomProvider, BalanceController, RoomSupport, Owned, Cir
         view
         gameMustExist(roomId)
         onlyParticipants(roomId)
-        returns (GameLibrary.GameStage, uint8[], address, address[], uint, uint8[], uint)
+        returns (GameLibrary.GameStage, uint8[], address, address[], uint, uint8[], int)
     {
         GameLibrary.GameState storage game = games[roomId];
         return (game.stage, game.usedCards, game.dealer, game.players, game.currentPlayerIndex, game.playerStates[game.dealer].hand, game.playerStates[game.dealer].winning);
@@ -209,19 +209,23 @@ contract Blackjack is RandomProvider, BalanceController, RoomSupport, Owned, Cir
             return;
 
         GameLibrary.GameState storage game = games[roomId];
+        uint i;
 
         // Stop the game if any player leaves mid-game, or if game creator leaves at any time
-        if (!(game.stage == GameLibrary.GameStage.WaitingForPlayersAndBetting || game.stage == GameLibrary.GameStage.Ended) ||
-            game.dealer == msg.sender) {
+        bool gameStartedOrEnded =
+            game.stage != GameLibrary.GameStage.WaitingForPlayersAndBetting &&
+            game.stage != GameLibrary.GameStage.Ended;
+        if (gameStartedOrEnded)
+            {
             emit Log("Player left, refund all other players and destroy game");
-            for (uint i = 0; i < game.players.length; i++) {
+
+            GameLibrary.PlayerState storage dealerState = game.playerStates[game.dealer];
+            for (i = 0; i < game.players.length; i++) {
+                GameLibrary.PlayerState storage playerState = game.playerStates[game.players[i]];
                 if (game.players[i] == msg.sender) {
                     // If player leaves mid-game, his bet goes to the dealer
                     if (game.dealer != msg.sender) {
-                        GameLibrary.PlayerState storage dealerState = game.playerStates[game.dealer];
-                        GameLibrary.PlayerState storage playerState = game.playerStates[msg.sender];
-
-                        dealerState.winning += playerState.bet;
+                        dealerState.winning += int(playerState.bet);
                         playerState.bet = 0;
 
                         balances[game.dealer].balance += int(dealerState.winning);
@@ -229,23 +233,44 @@ contract Blackjack is RandomProvider, BalanceController, RoomSupport, Owned, Cir
                     } else {
                         continue;
                     }
-                }
+                } else if (game.dealer == msg.sender) {
+                    // If dealer leaves mid-game, all players win
+                    playerState = game.playerStates[game.players[i]];
 
+                    dealerState.winning -= int(playerState.bet);
+                    playerState.winning += int(playerState.bet * 2);
+
+                    balances[game.dealer].balance += int(dealerState.winning);
+                    balances[game.players[i]].balance += int(playerState.winning);
+
+                    dealerState.winning = 0;
+                    playerState.winning = 0;
+                } else {
+                    refund(game.roomId, game.players[i]);
+                }
+            }
+
+            destroyGameAndRoom(game, roomIndex);
+        }
+        // Refund all players if dealers leaves while preparing game
+        else if (game.dealer == msg.sender) {
+            for (i = 0; i < game.players.length; i++) {
                 refund(game.roomId, game.players[i]);
             }
 
             destroyGameAndRoom(game, roomIndex);
-        } else {
+        }
+        else {
             // Refund player if he leaves before game has started
             ArrayLibrary.removeAddressFromArrayUnordered(rooms[roomIndex].players, msg.sender);
             refund(game.roomId, msg.sender);
             game.removePlayer(msg.sender);
-
-            emit PlayerLeft(game.eventNonce++, game.roomId, msg.sender);
         }
+
+        emit PlayerLeft(game.eventNonce++, game.roomId, msg.sender);
     }
 
-    function getRooms() public view returns (uint[], bytes32[], uint8[]) {
+    function getRooms() public view returns (uint[], bytes32[], address[], uint8[]) {
         uint i;
         uint discoverableRoomsCounter = 0;
         for (i = 0; i < rooms.length; i++) {
@@ -258,6 +283,7 @@ contract Blackjack is RandomProvider, BalanceController, RoomSupport, Owned, Cir
 
         uint[] memory ids = new uint[](discoverableRoomsCounter);
         bytes32[] memory names = new bytes32[](discoverableRoomsCounter);
+        address[] memory creators = new address[](discoverableRoomsCounter);
         uint8[] memory playerCounts = new uint8[](discoverableRoomsCounter);
 
         discoverableRoomsCounter = 0;
@@ -268,11 +294,12 @@ contract Blackjack is RandomProvider, BalanceController, RoomSupport, Owned, Cir
 
             ids[discoverableRoomsCounter] = room.id;
             names[discoverableRoomsCounter] = room.name;
+            creators[discoverableRoomsCounter] = room.creator;
             playerCounts[discoverableRoomsCounter] = uint8(room.players.length);
             discoverableRoomsCounter++;
         }
 
-        return (ids, names, playerCounts);
+        return (ids, names, creators, playerCounts);
     }
 
     function setRoomDiscoverableOnGameEnded(GameLibrary.GameState storage game) private {

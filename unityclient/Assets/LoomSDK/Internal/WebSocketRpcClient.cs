@@ -196,8 +196,11 @@ namespace Loom.Unity3d.Internal
                             if (partialMsg.Error != null)
                             {
                                 throw new RpcClientException(String.Format(
-                                    "JSON-RPC Error {0} ({1}): {2}",
-                                    partialMsg.Error.Code, partialMsg.Error.Message, partialMsg.Error.Data
+                                    "JSON-RPC Error {0} ({1}) when calling method '{2}': {3}",
+                                    partialMsg.Error.Code,
+                                    partialMsg.Error.Message,
+                                    method,
+                                    partialMsg.Error.Data
                                 ));
                             }
                             else

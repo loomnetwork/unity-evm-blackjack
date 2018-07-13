@@ -171,112 +171,29 @@ contract("TestingBlackjack", function(accounts) {
         );
     }
 
-    it("3 player - player 1 has blackjack, he can't make a move", async function() {
-        let roomId = await startTestThreePlayerGame([
-            // player 1
-            CardValue.Ace,
-            // player 2
-            CardValue.Four,
-            // player 3
-            CardValue.Four,
-            // dealer
-            CardValue.Four,
-            // player 1
-            CardValue.Jack,
-            // player 2
-            CardValue.Four,
-            // player 3
-            CardValue.Four
-        ]);
+    it("all players win if dealer leaves mid-game", async function() {
+        await contract.createRoom("test room");
+        let roomCreatedEvent = await getLastEventArgs(contract.RoomCreated());
+        let roomId = roomCreatedEvent.roomId;
 
-        assert.equal(state.dealer.score, 4);
-        assert.equal(state.player1.score, 21);
-        assert.equal(state.player2.score, 8);
-        assert.equal(state.player3.score, 8);
+        await contract.joinRoom(roomId, { from: player1Address });
+        await contract.placeBet(roomId, 100, { from: player1Address });
 
-        let currentPlayerIndexChangedEvent = await getLastEventArgs(
-            contract.CurrentPlayerIndexChanged()
-        );
+        await contract.joinRoom(roomId, { from: player2Address });
+        await contract.placeBet(roomId, 500, { from: player2Address });
 
-        assert.equal(currentPlayerIndexChangedEvent.playerIndex.toNumber(), 1);
-        await contract.playerDecision(roomId, PlayerDecision.Stand, { from: player2Address });
+        await contract.setNextFakeRandomNumbers(Array(15).fill(CardValue.Six));
+        await contract.startGame(roomId);
 
-        currentPlayerIndexChangedEvent = await getLastEventArgs(
-            contract.CurrentPlayerIndexChanged()
-        );
-        assert.equal(currentPlayerIndexChangedEvent.playerIndex.toNumber(), 2);
-    });
+        assert.equal((await contract.getBalance(dealerAddress)).toNumber(), 0);
+        assert.equal((await contract.getBalance(player1Address)).toNumber(), -100);
+        assert.equal((await contract.getBalance(player2Address)).toNumber(), -500);
 
-    it("3 player - player 2 has blackjack, he can't make a move", async function() {
-        let roomId = await startTestThreePlayerGame([
-            // player 1
-            CardValue.Four,
-            // player 2
-            CardValue.Ace,
-            // player 3
-            CardValue.Four,
-            // dealer
-            CardValue.Four,
-            // player 1
-            CardValue.Four,
-            // player 2
-            CardValue.Jack,
-            // player 3
-            CardValue.Four
-        ]);
+        await contract.leaveRoom(roomId);
 
-        assert.equal(state.dealer.score, 4);
-        assert.equal(state.player1.score, 8);
-        assert.equal(state.player2.score, 21);
-        assert.equal(state.player3.score, 8);
-
-        let currentPlayerIndexChangedEvent = await getLastEventArgs(
-            contract.CurrentPlayerIndexChanged()
-        );
-
-        assert.equal(currentPlayerIndexChangedEvent.playerIndex.toNumber(), 0);
-        await contract.playerDecision(roomId, PlayerDecision.Stand, { from: player1Address });
-
-        currentPlayerIndexChangedEvent = await getLastEventArgs(
-            contract.CurrentPlayerIndexChanged()
-        );
-        assert.equal(currentPlayerIndexChangedEvent.playerIndex.toNumber(), 2);
-    });
-
-    it("3 player - all players have blackjack", async function() {
-        let roomId = await startTestThreePlayerGame([
-            // player 1
-            CardValue.Ace,
-            // player 2
-            CardValue.Ace,
-            // player 3
-            CardValue.Ace,
-            // dealer
-            CardValue.Four,
-            // player 1
-            CardValue.Jack,
-            // player 2
-            CardValue.Jack,
-            // player 3
-            CardValue.Jack,
-            // dealer
-            CardValue.Four,
-            CardValue.Four,
-            CardValue.Four,
-            CardValue.Four,
-            CardValue.Four,
-        ]);
-
-        assert.equal(state.dealer.score, 20);
-        assert.equal(state.player1.score, 21);
-        assert.equal(state.player2.score, 21);
-        assert.equal(state.player3.score, 21);
-
-        let gameStageChangedEvent = await getLastEventArgs(
-            contract.GameStageChanged()
-        );
-
-        assert.equal(gameStageChangedEvent.stage.toNumber(), 4);
+        assert.equal((await contract.getBalance(dealerAddress)).toNumber(), -100 - 500);
+        assert.equal((await contract.getBalance(player1Address)).toNumber(), 100);
+        assert.equal((await contract.getBalance(player2Address)).toNumber(), 500);
     });
 
     it("should create rooms", async function() {
@@ -289,6 +206,23 @@ contract("TestingBlackjack", function(accounts) {
     });
 
     it("should join correctly", async function() {
+        await contract.createRoom("test room");
+        let roomCreatedEvent = await getLastEventArgs(contract.RoomCreated());
+        let roomId = roomCreatedEvent.roomId;
+
+        var players = await contract.getRoomPlayers(roomId);
+        assert.deepEqual(players, [dealerAddress]);
+
+        await contract.joinRoom(roomId, { from: player1Address });
+        players = await contract.getRoomPlayers(roomId);
+        assert.deepEqual(players, [dealerAddress, player1Address]);
+
+        await contract.joinRoom(roomId, { from: player2Address });
+        players = await contract.getRoomPlayers(roomId);
+        assert.deepEqual(players, [dealerAddress, player1Address, player2Address]);
+    });
+
+    it("dealer can not join the room he created as a player", async function() {
         await contract.createRoom("test room");
         let roomCreatedEvent = await getLastEventArgs(contract.RoomCreated());
         let roomId = roomCreatedEvent.roomId;
@@ -366,29 +300,6 @@ contract("TestingBlackjack", function(accounts) {
         assert.equal((await contract.getBalance(player2Address)).toNumber(), 0);
     });
 
-    it("refund all players if dealer leaves mid-game", async function() {
-        await contract.createRoom("test room");
-        let roomCreatedEvent = await getLastEventArgs(contract.RoomCreated());
-        let roomId = roomCreatedEvent.roomId;
-
-        await contract.joinRoom(roomId, { from: player1Address });
-        await contract.placeBet(roomId, 100, { from: player1Address });
-
-        await contract.joinRoom(roomId, { from: player2Address });
-        await contract.placeBet(roomId, 500, { from: player2Address });
-
-        await contract.setNextFakeRandomNumbers(Array(15).fill(CardValue.Six));
-        await contract.startGame(roomId);
-
-        assert.equal((await contract.getBalance(player1Address)).toNumber(), -100);
-        assert.equal((await contract.getBalance(player2Address)).toNumber(), -500);
-
-        await contract.leaveRoom(roomId);
-
-        assert.equal((await contract.getBalance(player1Address)).toNumber(), 0);
-        assert.equal((await contract.getBalance(player2Address)).toNumber(), 0);
-    });
-
     it("when player leaves mid-game, refund all players except the one who left mid-game", async function() {
         await contract.createRoom("test room");
         let roomCreatedEvent = await getLastEventArgs(contract.RoomCreated());
@@ -425,6 +336,58 @@ contract("TestingBlackjack", function(accounts) {
         await contract.leaveRoom(roomId, { from: player1Address });
 
         await tryCatch(contract.getGameState(roomId), errTypes.revert);
+    });
+
+    it("dealer can leave room after round has ended", async function() {
+        let roomId = await startTestOnePlayerGame([
+            CardValue.Five,
+            CardValue.Four,
+            CardValue.Jack,
+            CardValue.Five,
+            CardValue.Seven,
+            CardValue.Six
+        ]);
+
+        assert.deepEqual(state.dealer.hand, [CardValue.Four]);
+        assert.deepEqual(state.player1.hand, [CardValue.Five, CardValue.Jack]);
+
+        await contract.playerDecision(roomId, PlayerDecision.Hit, { from: player1Address });
+        await contract.playerDecision(roomId, PlayerDecision.Stand, { from: player1Address });
+        await updateOnePlayerState(roomId);
+
+        assert.equal((await contract.getBalance(dealerAddress)).toNumber(), -100);
+        assert.equal((await contract.getBalance(player1Address)).toNumber(), 100);
+
+        await contract.leaveRoom(roomId, { from: dealerAddress });
+
+        assert.equal((await contract.getBalance(dealerAddress)).toNumber(), -100);
+        assert.equal((await contract.getBalance(player1Address)).toNumber(), 100);
+    });
+
+    it("player can leave room after round has ended", async function() {
+        let roomId = await startTestOnePlayerGame([
+            CardValue.Five,
+            CardValue.Four,
+            CardValue.Jack,
+            CardValue.Five,
+            CardValue.Seven,
+            CardValue.Six
+        ]);
+
+        assert.deepEqual(state.dealer.hand, [CardValue.Four]);
+        assert.deepEqual(state.player1.hand, [CardValue.Five, CardValue.Jack]);
+
+        await contract.playerDecision(roomId, PlayerDecision.Hit, { from: player1Address });
+        await contract.playerDecision(roomId, PlayerDecision.Stand, { from: player1Address });
+        await updateOnePlayerState(roomId);
+
+        assert.equal((await contract.getBalance(dealerAddress)).toNumber(), -100);
+        assert.equal((await contract.getBalance(player1Address)).toNumber(), 100);
+
+        await contract.leaveRoom(roomId, { from: player1Address });
+
+        assert.equal((await contract.getBalance(dealerAddress)).toNumber(), -100);
+        assert.equal((await contract.getBalance(player1Address)).toNumber(), 100);
     });
 
     it("when game starts, room becomes non-discoverable, then discoverable again when round ends", async function() {
@@ -509,15 +472,15 @@ contract("TestingBlackjack", function(accounts) {
 
         await contract.joinRoom(roomId, { from: player1Address });
         var gameState = await contract.getGameState(roomId);
-        assert.equal(gameState[2].length, 1);
+        assert.equal(gameState[3].length, 1);
 
         await contract.joinRoom(roomId, { from: player1Address });
         var gameState = await contract.getGameState(roomId);
-        assert.equal(gameState[2].length, 1);
+        assert.equal(gameState[3].length, 1);
 
         await contract.joinRoom(roomId, { from: dealerAddress });
         var gameState = await contract.getGameState(roomId);
-        assert.equal(gameState[2].length, 1);
+        assert.equal(gameState[3].length, 1);
     });
 
     it("should not double-bet", async function() {
@@ -550,6 +513,7 @@ contract("TestingBlackjack", function(accounts) {
 
         await contract.leaveRoom(roomId, { from: player1Address });
     });
+
 
     it("1 player - player wins", async function() {
         let roomId = await startTestOnePlayerGame([
@@ -1006,6 +970,114 @@ contract("TestingBlackjack", function(accounts) {
         assert.equal(state.player2.balance, -500);
 
         throwError();
+    });
+
+    it("3 player - player 1 has blackjack, he can't make a move", async function() {
+        let roomId = await startTestThreePlayerGame([
+            // player 1
+            CardValue.Ace,
+            // player 2
+            CardValue.Four,
+            // player 3
+            CardValue.Four,
+            // dealer
+            CardValue.Four,
+            // player 1
+            CardValue.Jack,
+            // player 2
+            CardValue.Four,
+            // player 3
+            CardValue.Four
+        ]);
+
+        assert.equal(state.dealer.score, 4);
+        assert.equal(state.player1.score, 21);
+        assert.equal(state.player2.score, 8);
+        assert.equal(state.player3.score, 8);
+
+        let currentPlayerIndexChangedEvent = await getLastEventArgs(
+            contract.CurrentPlayerIndexChanged()
+        );
+
+        assert.equal(currentPlayerIndexChangedEvent.playerIndex.toNumber(), 1);
+        await contract.playerDecision(roomId, PlayerDecision.Stand, { from: player2Address });
+
+        currentPlayerIndexChangedEvent = await getLastEventArgs(
+            contract.CurrentPlayerIndexChanged()
+        );
+        assert.equal(currentPlayerIndexChangedEvent.playerIndex.toNumber(), 2);
+    });
+
+    it("3 player - player 2 has blackjack, he can't make a move", async function() {
+        let roomId = await startTestThreePlayerGame([
+            // player 1
+            CardValue.Four,
+            // player 2
+            CardValue.Ace,
+            // player 3
+            CardValue.Four,
+            // dealer
+            CardValue.Four,
+            // player 1
+            CardValue.Four,
+            // player 2
+            CardValue.Jack,
+            // player 3
+            CardValue.Four
+        ]);
+
+        assert.equal(state.dealer.score, 4);
+        assert.equal(state.player1.score, 8);
+        assert.equal(state.player2.score, 21);
+        assert.equal(state.player3.score, 8);
+
+        let currentPlayerIndexChangedEvent = await getLastEventArgs(
+            contract.CurrentPlayerIndexChanged()
+        );
+
+        assert.equal(currentPlayerIndexChangedEvent.playerIndex.toNumber(), 0);
+        await contract.playerDecision(roomId, PlayerDecision.Stand, { from: player1Address });
+
+        currentPlayerIndexChangedEvent = await getLastEventArgs(
+            contract.CurrentPlayerIndexChanged()
+        );
+        assert.equal(currentPlayerIndexChangedEvent.playerIndex.toNumber(), 2);
+    });
+
+    it("3 player - all players have blackjack", async function() {
+        let roomId = await startTestThreePlayerGame([
+            // player 1
+            CardValue.Ace,
+            // player 2
+            CardValue.Ace,
+            // player 3
+            CardValue.Ace,
+            // dealer
+            CardValue.Four,
+            // player 1
+            CardValue.Jack,
+            // player 2
+            CardValue.Jack,
+            // player 3
+            CardValue.Jack,
+            // dealer
+            CardValue.Four,
+            CardValue.Four,
+            CardValue.Four,
+            CardValue.Four,
+            CardValue.Four,
+        ]);
+
+        assert.equal(state.dealer.score, 20);
+        assert.equal(state.player1.score, 21);
+        assert.equal(state.player2.score, 21);
+        assert.equal(state.player3.score, 21);
+
+        let gameStageChangedEvent = await getLastEventArgs(
+            contract.GameStageChanged()
+        );
+
+        assert.equal(gameStageChangedEvent.stage.toNumber(), 4);
     });
 
     /*

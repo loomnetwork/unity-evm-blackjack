@@ -7,7 +7,7 @@ namespace Loom.Blackjack
 {
     public class GameState
     {
-        public BigInteger RoomId;
+        public BigInteger RoomId = -1;
         public PlayerRole Role;
         public GameStage Stage;
         public bool IsInGame;

@@ -29,7 +29,7 @@ namespace Loom.Blackjack
 
         private async void OnGUI()
         {
-            if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.KeypadPlus)
+            if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.PageDown)
             {
                 this.debugUIEnabled = !this.debugUIEnabled;
             }
@@ -41,7 +41,7 @@ namespace Loom.Blackjack
             {
                 GUILayout.BeginVertical(GUI.skin.box);
                 {
-                    GUILayout.Label("Debug Menu");
+                    GUILayout.Label("Debug Menu (PageDown)");
                     GUILayout.BeginHorizontal();
                     {
                         GUILayout.Label("Player " + (Array.IndexOf((Array) this.clients, this.currentClient) + 1));

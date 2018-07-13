@@ -60,6 +60,7 @@ namespace Loom.Blackjack
 
             this.Game = new GameObject(this);
             this.Room = new RoomObject(this);
+            this.Common = new CommonObject(this);
 
             this.address = Address.FromPublicKey(this.publicKey);
         }
@@ -67,7 +68,17 @@ namespace Loom.Blackjack
         public bool IsConnected => this.reader.IsConnected;
         public GameObject Game { get; }
         public RoomObject Room { get; }
+        public CommonObject Common { get; }
         public Address Address => this.address;
+
+        public async Task Reconnect()
+        {
+            if (this.contract != null)
+            {
+                this.contract.EventReceived -= EventReceivedHandler;
+            }
+            this.contract = await GetContract();
+        }
 
         public async Task ConnectToContract()
         {
@@ -356,6 +367,19 @@ namespace Loom.Blackjack
             }
         }
 
+        public class CommonObject : LogicObject
+        {
+            public CommonObject(BlackjackContractClient client) : base(client)
+            {
+            }
+
+            public async Task<BigInteger> GetBalance(Address address)
+            {
+                await this.Client.ConnectToContract();
+                return await this.Client.contract.StaticCallSimpleTypeOutputAsync<BigInteger>("getBalance", address.LocalAddress);
+            }
+        }
+
         public class GameObject : LogicObject
         {
             public GameObject(BlackjackContractClient client) : base(client)
@@ -449,6 +473,9 @@ namespace Loom.Blackjack
             [Parameter("bytes32[]")]
             public List<byte[]> RoomNames { get; set; }
 
+            [Parameter("address[]")]
+            public List<string> Creators { get; set; }
+
             [Parameter("uint8[]")]
             public List<int> PlayerCounts { get; set; }
         }
@@ -474,7 +501,7 @@ namespace Loom.Blackjack
             [Parameter("uint8[]")]
             public List<byte> DealerHand { get; set; }
 
-            [Parameter("uint")]
+            [Parameter("int")]
             public BigInteger DealerWinning { get; set; }
         }
 
@@ -487,7 +514,7 @@ namespace Loom.Blackjack
             [Parameter("uint")]
             public BigInteger Bet { get; set; }
 
-            [Parameter("uint")]
+            [Parameter("int")]
             public BigInteger Winning { get; set; }
 
             [Parameter("bool")]

@@ -4,6 +4,7 @@ using System.Numerics;
 using System.Threading.Tasks;
 using Loom.Unity3d;
 using UnityEngine;
+using UnityEngine.Events;
 using UnityEngine.UI;
 using Vector3 = UnityEngine.Vector3;
 
@@ -13,6 +14,7 @@ namespace Loom.Blackjack
     {
         public GameStateController GameStateController;
         public GamePrefabsContainer PrefabsContainer;
+        public GameObject MainCanvas;
         public GameObject GameContainer;
         public GameObject RoomListContainer;
         public GameObject RoomList;
@@ -33,39 +35,92 @@ namespace Loom.Blackjack
         public GameObject GameDealerStartGameUIWaitingButton;
         public GameObject GameReadyStateToggleContainer;
         public Text GameStatus;
+        public Text BalanceValueText;
+        public GameObject ModalDialogPrefab;
 
         private GameUIState gameUIState = new GameUIState();
+        private Address? lastPlayerLeft;
+        private bool networkLostDialogShown;
 
         private void Start()
         {
             SetScreen(Screen.RoomList);
             this.GameStateController.StateChanged += GameStateControllerOnStateChanged;
             this.GameStateController.RoomListChanged += GameStateControllerOnRoomListChanged;
+            this.GameStateController.PlayerLeft += GameStateControllerOnPlayerLeft;
         }
 
-        private void GameStateControllerOnRoomListChanged()
+        private void GameStateControllerOnPlayerLeft(Address player)
+        {
+            this.lastPlayerLeft = player;
+        }
+
+        private async void GameStateControllerOnRoomListChanged()
         {
             UpdateRoomList();
+            await UpdateBalance();
         }
 
         private void OnDestroy()
         {
             this.GameStateController.StateChanged -= GameStateControllerOnStateChanged;
             this.GameStateController.RoomListChanged -= GameStateControllerOnRoomListChanged;
+            this.GameStateController.PlayerLeft -= GameStateControllerOnPlayerLeft;
+        }
+
+        private void Update()
+        {
+            if (!this.networkLostDialogShown && !this.GameStateController.Client.IsConnected)
+            {
+                this.networkLostDialogShown = true;
+                ShowModalDialog(
+                    "Connection Lost",
+                    "Connection to BlackJack DAppChain could not be established.\n\n" +
+                    "Click OK to try to reconnect.",
+                    async () =>
+                    {
+                        this.networkLostDialogShown = false;
+                        await this.GameStateController.Client.Reconnect();
+                        await this.GameStateController.UpdateRoomList();
+                        await UpdateBalance();
+                    }
+                );
+            }
         }
 
         private async void GameStateControllerOnStateChanged()
         {
-            if (this.gameUIState.Screen == Screen.RoomList)
+
+            if (this.GameStateController.GameState.Stage == GameStage.Destroyed)
+            {
+                if (this.lastPlayerLeft == null || this.lastPlayerLeft.Value != this.GameStateController.Client.Address)
+                {
+                    ShowModalDialog(
+                        "Game Terminated",
+                        "The game was terminated becaused dealer or other player has left the game.\nYour bet was refunded.",
+                        null
+                    );
+                }
+
+                this.GameStateController.ResetState();
+                this.lastPlayerLeft = null;
+                this.GameStateController.GameState.IsInGame = false;
+                SetScreen(Screen.RoomList);
+                await this.GameStateController.UpdateRoomList();
+                UpdateRoomList();
+            } else if (this.gameUIState.Screen == Screen.RoomList)
             {
                 await this.GameStateController.UpdateRoomList();
             }
             UpdateUI();
+            await UpdateBalance();
         }
 
-        #region Event Handlers
-
-        #endregion
+        private async Task UpdateBalance()
+        {
+            BigInteger balance = await this.GameStateController.GetBalance();
+            this.BalanceValueText.text = FormatMonetaryValueAsRichText(balance);
+        }
 
         private void UpdateRoomList()
         {
@@ -87,13 +142,21 @@ namespace Loom.Blackjack
 
         public void UpdateUI()
         {
-            this.GameBettingUIContainer.SetActive(this.GameStateController.GameState.Stage == GameStage.WaitingForPlayersAndBetting);
             this.GamePlayerActionsUIContainer.SetActive(this.GameStateController.GameState.Stage == GameStage.PlayersTurn && this.GameStateController.GameState.CurrentPlayer == this.GameStateController.Client.Address
             );
 
-            bool selfAlreadyBet = this.GameStateController.GameState.Players.Any(state => state.Address == this.GameStateController.Client.Address && state.Bet != 0);
-            this.GameBettingUIContainer.SetActive(!selfAlreadyBet);
+            bool selfAlreadyBet =
+                this.GameStateController.GameState.Players.Any(state => state.Address == this.GameStateController.Client.Address && state.Bet != 0);
+            this.GameBettingUIContainer.SetActive(
+                !selfAlreadyBet &&
+                this.GameStateController.GameState.Stage == GameStage.WaitingForPlayersAndBetting
+                );
             //this.GameFieldContainer.SetActive(GameState.Stage == GameStage.PlayersTurn || GameState.Stage == GameStage.DealerTurn);
+
+            if (this.GameStateController.GameState.Stage == GameStage.WaitingForPlayersAndBetting)
+            {
+                this.GameReadyStateToggleContainer.GetComponentInChildren<Toggle>().isOn = false;
+            }
 
             this.GameReadyStateToggleContainer.SetActive(this.GameStateController.GameState.Stage == GameStage.Ended);
 
@@ -144,6 +207,16 @@ namespace Loom.Blackjack
                 true
             );
 
+            for (int i = 0; i < this.gameUIState.PlayerViews.Length; i++)
+            {
+                PlayerView playerView = this.gameUIState.PlayerViews[i];
+                if (playerView == null)
+                    continue;
+
+                Destroy(playerView.gameObject);
+                this.gameUIState.PlayerViews[i] = null;
+            }
+
             for (int i = 0; i < this.GameStateController.GameState.Players.Length; i++)
             {
                 int playerIndex = i;
@@ -177,52 +250,51 @@ namespace Loom.Blackjack
             }
 
             playerViewGO.GetComponent<RectTransform>().anchoredPosition = position;
+            PlayerView playerView = getPlayerViewFunc();
 
             if (this.GameStateController.GameState.Stage == GameStage.Ended)
             {
-                string outcomeColor = playerState.Outcome == 0 ? "white" : (playerState.Outcome > 0 ? "#30FF30" : "red");
-                string outcomeText = (playerState.Outcome > 0 ? "+" : "−") + Mathf.Abs(playerState.Outcome).ToString();
-                playerName += $" (Outcome: <color={outcomeColor}>{outcomeText}</color>)";
+                playerName += $" ({FormatMonetaryValueAsRichText(playerState.Outcome)})";
             }
 
-            getPlayerViewFunc().UIContainer.BetContainer.SetActive(playerState.Bet > 0);
-            getPlayerViewFunc().UIContainer.BetValue.text = playerState.Bet.ToString();
+            playerView.UIContainer.BetContainer.SetActive(playerState.Bet > 0);
+            playerView.UIContainer.BetValue.text = playerState.Bet.ToString();
 
-            getPlayerViewFunc().UIContainer.PlayerName.text = playerName;
-            getPlayerViewFunc().UIContainer.ActivePlayerMarker.SetActive(
+            playerView.UIContainer.PlayerName.text = playerName;
+            playerView.UIContainer.ActivePlayerMarker.SetActive(
                 !isDealer &&
                 this.GameStateController.GameState.Stage == GameStage.PlayersTurn &&
                 this.GameStateController.GameState.CurrentPlayer == playerState.Address
                 );
-            getPlayerViewFunc().UIContainer.SelfPlayerMarker.SetActive(
+            playerView.UIContainer.SelfPlayerMarker.SetActive(
                 playerState.Address == this.GameStateController.Client.Address
                 );
 
             bool showScore = playerState.Hand != null && playerState.Hand.Length != 0;
-            getPlayerViewFunc().UIContainer.HandScoreContainer.SetActive(showScore);
-            getPlayerViewFunc().UIContainer.ReadyForNextRoundMarker.SetActive(false);
-            getPlayerViewFunc().UIContainer.NotReadyForNextRoundMarker.SetActive(false);
+            playerView.UIContainer.HandScoreContainer.SetActive(showScore);
+            playerView.UIContainer.ReadyForNextRoundMarker.SetActive(false);
+            playerView.UIContainer.NotReadyForNextRoundMarker.SetActive(false);
             if (showScore)
             {
-                getPlayerViewFunc().SetCards(playerState.Hand, this.PrefabsContainer);
+                playerView.SetCards(playerState.Hand, this.PrefabsContainer);
 
                 int softScore, hardScore;
                 BlackjackRules.CalculateHandScore(playerState.Hand, out softScore, out hardScore);
 
                 string scoreText = softScore == hardScore ? softScore.ToString() : softScore + "/" + hardScore;
-                getPlayerViewFunc().UIContainer.HandScore.text = scoreText;
-                getPlayerViewFunc().UIContainer.HandScore.color = hardScore > 21 ? Color.red : Color.black;
-                getPlayerViewFunc().UIContainer.BlackjackLabelContainer.SetActive(playerState.Hand.Length == 2 && hardScore == 21);
+                playerView.UIContainer.HandScore.text = scoreText;
+                playerView.UIContainer.HandScore.color = hardScore > 21 ? new Color(0.65f, 0, 0) : Color.black;
+                playerView.UIContainer.BlackjackLabelContainer.SetActive(playerState.Hand.Length == 2 && hardScore == 21);
 
                 if (!isDealer && this.GameStateController.GameState.Stage == GameStage.Ended)
                 {
-                    getPlayerViewFunc().UIContainer.ReadyForNextRoundMarker.SetActive(playerState.ReadyForNextRound);
-                    getPlayerViewFunc().UIContainer.NotReadyForNextRoundMarker.SetActive(!playerState.ReadyForNextRound);
+                    playerView.UIContainer.ReadyForNextRoundMarker.SetActive(playerState.ReadyForNextRound);
+                    playerView.UIContainer.NotReadyForNextRoundMarker.SetActive(!playerState.ReadyForNextRound);
                 }
             } else
             {
-                getPlayerViewFunc().SetCards(Array.Empty<Card>(), this.PrefabsContainer);
-                getPlayerViewFunc().UIContainer.BlackjackLabelContainer.SetActive(false);
+                playerView.SetCards(Array.Empty<Card>(), this.PrefabsContainer);
+                playerView.UIContainer.BlackjackLabelContainer.SetActive(false);
             }
         }
 
@@ -267,19 +339,21 @@ namespace Loom.Blackjack
 
         private async void JoinRoomClickHandler(BigInteger roomId)
         {
+            Room room = this.GameStateController.Rooms.Find(r => r.Id == roomId);
             try
             {
                 await this.GameStateController.Client.Room.JoinRoom(roomId);
             } catch (TxCommitException)
             {
                 // The room is likely dead, remove it from the list
-                this.GameStateController.Rooms.Remove(this.GameStateController.Rooms.Find(room => room.Id == roomId));
+                this.GameStateController.Rooms.Remove(room);
                 UpdateRoomList();
                 return;
             }
 
             this.GameStateController.GameState.RoomId = roomId;
-            SetRole(PlayerRole.Player);
+            SetRole(room.Creator == this.GameStateController.Client.Address ? PlayerRole.Dealer : PlayerRole.Player);
+
             SetScreen(Screen.Game);
             await this.GameStateController.UpdateGameState();
         }
@@ -297,10 +371,6 @@ namespace Loom.Blackjack
         public async void GameLeaveClickHandler()
         {
             await this.GameStateController.Client.Room.LeaveRoom(this.GameStateController.GameState.RoomId);
-            this.GameStateController.GameState.IsInGame = false;
-            SetScreen(Screen.RoomList);
-            await this.GameStateController.UpdateRoomList();
-            UpdateRoomList();
         }
 
         public async void GameBetClickHandler()
@@ -354,6 +424,32 @@ namespace Loom.Blackjack
 
         #endregion
 
+        private void ShowModalDialog(string title, string text, Action okAction)
+        {
+            GameObject modalDialogGO = Instantiate(this.ModalDialogPrefab, this.MainCanvas.transform, false);
+            modalDialogGO.transform.localScale = Vector3.one;
+            modalDialogGO.transform.localPosition = Vector3.zero;
+            ModalDialogUIContainer dialog = modalDialogGO.GetComponent<ModalDialogUIContainer>();
+            dialog.Title.text = title;
+            dialog.Text.text = text;
+
+            UnityAction onOkClicked = null;
+            onOkClicked = () => {
+                okAction?.Invoke();
+                dialog.OKButton.onClick.RemoveListener(onOkClicked);
+                Destroy(modalDialogGO);
+            };
+
+            dialog.OKButton.onClick.AddListener(onOkClicked);
+        }
+
+        private string FormatMonetaryValueAsRichText(BigInteger value)
+        {
+            string outcomeColor = value == 0 ? "white" : (value > 0 ? "#30FF30" : "red");
+            string outcomeText = (value == 0 ? "" : (value > 0 ? "+" : "−")) + BigInteger.Abs(value);
+            return $"<color={outcomeColor}>{outcomeText}</color>";
+        }
+
         private class GameUIState
         {
             public Screen Screen;
@@ -367,5 +463,4 @@ namespace Loom.Blackjack
             Game
         }
     }
-
 }
