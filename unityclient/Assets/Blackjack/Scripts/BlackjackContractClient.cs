@@ -65,7 +65,9 @@ namespace Loom.Blackjack
             this.address = Address.FromPublicKey(this.publicKey);
         }
 
-        public bool IsConnected => this.reader.IsConnected;
+        public bool IsConnected =>
+            this.reader.ConnectionState == RpcConnectionState.Connecting ||
+            this.reader.ConnectionState == RpcConnectionState.Connected;
         public GameObject Game { get; }
         public RoomObject Room { get; }
         public CommonObject Common { get; }

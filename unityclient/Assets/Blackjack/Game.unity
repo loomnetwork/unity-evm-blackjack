@@ -3483,7 +3483,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5bf4e2508b0c4b939c17ee562f36eeea, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  BackendHost: lostpolygon.com
+  BackendHost: 127.0.0.1
   ContractAbi: {fileID: 4900000, guid: 9c372331d0f9e75489570e0ffcc0d80d, type: 3}
 --- !u!4 &1451593823
 Transform:

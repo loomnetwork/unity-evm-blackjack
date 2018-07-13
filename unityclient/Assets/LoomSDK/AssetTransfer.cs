@@ -40,7 +40,7 @@ namespace Loom.Unity3d
         {
             if (string.IsNullOrEmpty(errorStr))
             {
-                assetTransferTCS.TrySetException(new AssetTransferException("An error occurred while attempting to transfer asset."));
+                assetTransferTCS.TrySetException(new AssetTransferException());
             }
             else
             {

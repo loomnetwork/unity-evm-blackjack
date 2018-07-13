@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace Loom.Unity3d
+﻿namespace Loom.Unity3d
 {
     /// <summary>
     /// Used to signal that commiting a transaction has failed.
@@ -10,6 +8,8 @@ namespace Loom.Unity3d
         private readonly int code;
         private readonly string error;
 
+        public int Code => this.code;
+        public string Error => this.error;
         public override string Message => $"[Code {this.code}] {this.error}";
 
         public TxCommitException(int code, string error)

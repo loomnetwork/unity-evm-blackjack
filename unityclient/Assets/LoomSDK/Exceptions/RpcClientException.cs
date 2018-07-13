@@ -11,7 +11,7 @@ namespace Loom.Unity3d
         {
         }
 
-        public RpcClientException(string msg) : base(msg)
+        public RpcClientException(string message) : base(message)
         {
         }
 
