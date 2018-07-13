@@ -53,6 +53,11 @@ namespace Loom.Blackjack
         private void GameStateControllerOnPlayerLeft(Address player)
         {
             this.lastPlayerLeft = player;
+            if (this.GameStateController.Client.Address == player)
+            {
+                SetScreen(Screen.RoomList);
+                this.GameStateController.ResetState();
+            }
         }
 
         private async void GameStateControllerOnRoomListChanged()
@@ -90,7 +95,6 @@ namespace Loom.Blackjack
 
         private async void GameStateControllerOnStateChanged()
         {
-
             if (this.GameStateController.GameState.Stage == GameStage.Destroyed)
             {
                 if (this.lastPlayerLeft == null || this.lastPlayerLeft.Value != this.GameStateController.Client.Address)

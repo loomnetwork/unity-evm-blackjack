@@ -29,9 +29,6 @@ cd dappchain
 ## Running the Unity client
 Open the Unity project located in `unityclient`. Open the `BlackJack/Game` scene and run/build it.
 
-### 2. Build Truffle project
-
-
 Loom Network
 ----
 [https://loomx.io](https://loomx.io)
