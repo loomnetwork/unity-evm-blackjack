@@ -1,10 +1,10 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
-using Loom.Unity3d;
-using Loom.Unity3d.Samples;
+using Loom.Client;
+using Loom.Client.Samples;
 using System;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
+using Loom.Newtonsoft.Json;
 
 public class LoomDemo : MonoBehaviour
 {

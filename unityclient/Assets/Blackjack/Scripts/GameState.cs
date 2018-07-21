@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Numerics;
-using Loom.Unity3d;
+using Loom.Client;
 using UnityEngine;
 
 namespace Loom.Blackjack

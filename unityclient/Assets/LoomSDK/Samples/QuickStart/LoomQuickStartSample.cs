@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Threading.Tasks;
 using UnityEngine;
-using Loom.Unity3d;
-using Loom.Unity3d.Samples;
+using Loom.Client;
+using Loom.Client.Samples;
 
 public class LoomQuickStartSample : MonoBehaviour {
 

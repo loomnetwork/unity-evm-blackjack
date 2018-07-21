@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Loom.Nethereum.ABI.FunctionEncoding.Attributes;
-using Loom.Unity3d;
+using Loom.Client;
 using UnityEngine;
 
 namespace Loom.Blackjack

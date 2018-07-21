@@ -1,5 +1,5 @@
 ﻿using System.Numerics;
-using Loom.Unity3d;
+using Loom.Client;
 
 namespace Loom.Blackjack
 {

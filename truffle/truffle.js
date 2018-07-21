@@ -12,21 +12,12 @@
  *   },
  */
 
+var LoomUnityBuildUtility = require("./LoomUnityBuildUtility");
 module.exports = {
     // See <http://truffleframework.com/docs/advanced/configuration>
     // to customize your Truffle configuration!
     build: function(options, callback) {
-        var fs = require('fs');
-        var json = JSON.parse(fs.readFileSync(options.destination_directory + "/contracts/Blackjack.json", 'utf8'));
-
-        console.log("Copying Blackjack.abi to Unity client");
-        fs.writeFileSync("../unityclient/Assets/Blackjack/Assets/Contract/Blackjack.abi.json", JSON.stringify(json.abi), function(err) {
-            throw Error(err);
-        });
-
-        console.log("Copying Blackjack.bin to Loom DAppChain instance");
-        fs.existsSync("../dappchain/build/") || fs.mkdirSync("../dappchain/build/");
-        fs.writeFileSync("../dappchain/build/Blackjack.bin", json.bytecode.substring(2));
+        new LoomUnityBuildUtility(options, "Blackjack", "../unityclient/Assets/Blackjack/Assets/Contract/", "../dappchain/build/").copyFiles();
     },
     solc: {
         optimizer: {
