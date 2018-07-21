@@ -14,7 +14,7 @@ Specifically, the game is [European No Hole Card Blackjack](https://www.topcasin
 git clone https://github.com/loomnetwork/unity-evm-blackjack.git
 cd unity-evm-blackjack
 
-# Compile and migrate the Truffle project. This will copy the ABI file to the Unity client,
+# Build the Truffle project. This will copy the ABI file to the Unity client,
 # and compiled contract to the Loom DAppChain
 
 cd truffle
