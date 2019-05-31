@@ -1,4 +1,9 @@
 
+# Deprecated Repository
+
+This repository is **deprecated**, and we are working on updating it. Meanwhile, head over to
+[this page](https://loomx.io/developers/docs/en/join-testnet.html) to find out how you can join the Loom PlasmaChain Testnet.
+
 # Solidity BlackJack + Unity Client
 
 An example game of Blackjack that uses an EVM contract written in Solidity as backend, and Unity as a client, utilizing the [Loom Unity SDK](https://github.com/loomnetwork/unity3d-sdk).
